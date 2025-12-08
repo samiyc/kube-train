@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-train-config
+data:
+  # La clé correspondra au nom de la variable d'environnement ou property
+  # Spring Boot transforme automatiquement "TRAIN_MESSAGE" en "train.message"
+  TRAIN_MESSAGE: "🚨 GREVE : Aucun train ne circule."

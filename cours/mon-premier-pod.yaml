@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-nginx-test  # Le nom de notre wagon
+  labels:
+    app: test-web       # Une étiquette adhésive pour le retrouver plus tard
+spec:
+  containers:
+    - name: mon-conteneur-nginx
+      image: nginx:latest  # L'image Docker à télécharger
+      ports:
+        - containerPort: 80

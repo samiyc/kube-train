@@ -1,0 +1,16 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kube-train-ingress
+spec:
+  rules:
+  - host: api.kube-train.local   # 👈 Notre faux nom de domaine
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: kube-train-service # 👈 Le service qu'on a créé à l'épisode précédent
+            port:
+              number: 80

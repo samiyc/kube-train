@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-train-deployment
+  labels:
+    app: kube-train
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kube-train-pod
+  template:
+    metadata:
+      labels:
+        app: kube-train-pod
+    spec:
+      containers:
+      - name: api-container
+        image: kube-train-api:v4  # 👈 Passage en V4
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+        
+        # Injection en masse (ConfigMap + Secrets)
+        envFrom:
+          - configMapRef:
+              name: kube-train-config
+          - secretRef:
+              name: kube-train-secrets
+        
+        # Injection manuelle (CORRECTION 2 : Mapping explicite)
+        env:
+        - name: TRAIN_API_KEY  # 👈 On renomme ici pour matcher "train.api.key" du Java
+          valueFrom:
+            secretKeyRef:
+              name: kube-train-secrets
+              key: API_KEY # La clé DANS le secret reste "API_KEY", c'est juste le nom de la variable qui change
