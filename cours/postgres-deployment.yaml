@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+spec:
+  replicas: 1  # ⚠️ Une seule réplique pour une BDD classique (sinon conflit d'écriture)
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "root" # (Pour le TP on fait simple, sinon -> Secret !)
+        volumeMounts:
+        - mountPath: "/var/lib/postgresql/data" # Là où Postgres écrit ses fichiers
+          name: postgres-storage
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc-claim # 👈 On branche le ticket créé plus haut

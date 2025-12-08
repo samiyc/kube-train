@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc-claim
+spec:
+  accessModes:
+    - ReadWriteOnce   # Le disque ne peut être monté que par un seul noeud à la fois
+  resources:
+    requests:
+      storage: 500Mi  # La taille demandée

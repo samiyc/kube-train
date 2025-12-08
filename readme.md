@@ -41,15 +41,15 @@ Outils CLI : kubectl, docker, k9s
 
 [x] Épisode 3 : Ingress (La porte royale)
 
-### 📺 Saison 4 : Configuration & Stockage (EN COURS ▶️)
+### 📺 Saison 4 : Configuration & Stockage (TERMINÉ ✅)
 
 [x] Épisode 1 : ConfigMap (Variables d'env)
 
-[ ] Épisode 2 : Secrets (Mots de passe)
+[x] Épisode 2 : Secrets (Mots de passe)
 
-[ ] Épisode 3 : Volumes (Persistance)
+[x] Épisode 3 : Volumes (Persistance)
 
-### 📺 Saison 5 : L'Heure de Pointe (Scaling)
+### 📺 Saison 5 : L'Heure de Pointe. Scaling ! (EN COURS ▶️)
 
 [ ] Épisode 1 : Probes (Liveness/Readiness)
 
@@ -183,4 +183,19 @@ echo "UzNDUjNULUszWS0xMjM0NQ==" | base64 --decode
 k apply -f deployment.yaml
 k rollout restart deployment/kube-train-deployment
 curl -H "Host: api.kube-train.local" http://127.0.0.1:8081/secure
+```
+
+#### Volume persistant & BDD Postgres
+```
+# Initialisation
+k apply -f postgres-storage.yaml
+k get pvc
+k apply -f postgres-deployment.yaml
+k get deployments
+k apply -f postgres-service.yaml
+k get services
+
+# Connection a la base Postgres
+POSTGRES_POD=$(kubectl get pods -l app=postgres -o jsonpath="{.items[0].metadata.name}")
+sami@HOP008007:~/projets/kube-train/cours$ kubectl exec -it $POSTGRES_POD -- psql -U postgres
 ```
