@@ -49,30 +49,58 @@ Outils CLI : kubectl, docker, k9s
 
 [x] Épisode 3 : Volumes (Persistance)
 
-### 📺 Saison 5 : L'Heure de Pointe. Scaling ! (EN COURS ▶️)
+### 📺 Saison 5 : L'Heure de Pointe. Scaling ! (TERMINÉ ✅)
 
-[ ] Épisode 1 : Probes (Liveness/Readiness)
+[X] Épisode 1 : Probes (Liveness/Readiness)
 
-[ ] Épisode 2 : HPA (Autoscaling)
+[X] Épisode 2 : HPA (Autoscaling)
 
-[ ] Épisode 3 : Stress Test (Python Locust)
+[X] Épisode 3 : Stress Test (Python Locust)
+
+(EN COURS ▶️)
+
+## ✅ Compétences Validées
+Architecture Pods/Nodes, Minikube, Kubectl CLI  
+
+Dockerisation Java, ReplicaSets, Rolling Updates  
+
+Services (ClusterIP, NodePort), Ingress Controller, DNS
+
+ConfigMaps, Secrets (Base64), Variables d'Env
+
+PersistentVolumes, Claims (PVC), Réparation BDD
+
+Health Probes (Liveness/Readiness), HPA Autoscaling
+
+
+## 🚀 Prochaines Étapes Suggérées
+
+1\) Le Cloud Réel : Essaie de déployer ce projet sur un cluster managé gratuit/cheap (ex: OVH Managed K8s ou Google GKE autopilot) pour voir la différence avec Minikube (notamment les vrais LoadBalancers).
+
+2\) Helm : Tu as vu que copier-coller des YAML c'est long. Helm est le "package manager" de K8s pour templater tout ça.
+
+3\) CI/CD : Automatiser le docker build et kubectl apply via GitLab CI ou GitHub Actions.
 
 &nbsp;  
 
 # 📝 Cheat Sheet / Mémo Commandes
 
 #### Minikube  
-Avant chaque utilisation lancer : ```minikube start```
+Avant chaque utilisation lancer : ```minikube start --driver=docker```
 ```
-## Installation de Minikube 
-# 1) Télécharger Minikube
+# 1) Installation de kubectl
+curl -LO https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+kubectl version --client
+
+# 2) Installation de Minikube 
 curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-
-# 2) L'installer
 sudo install minikube-linux-amd64 /usr/local/bin/minikube
-
-# 3) Start
 minikube start
+
+# 3) Minikube ok ? clean up
+rm minikube-linux-amd64
+rm kubectl
 
 # 4) Alias
 echo "alias k='kubectl'" >> ~/.bashrc
@@ -163,6 +191,11 @@ kubectl port-forward -n ingress-nginx service/ingress-nginx-controller 8081:80
 
 # Test avec header Host
 curl -H "Host: api.kube-train.local" http://127.0.0.1:8081
+
+# Basic forward
+POD_NAME=$(kubectl get pods -l app=kube-train-pod -o jsonpath="{.items[0].metadata.name}")
+kubectl port-forward $POD_NAME 8080:8080
+curl http://localhost:8080/
 ```
 
 #### Secret
@@ -198,4 +231,56 @@ k get services
 # Connection a la base Postgres
 POSTGRES_POD=$(kubectl get pods -l app=postgres -o jsonpath="{.items[0].metadata.name}")
 sami@HOP008007:~/projets/kube-train/cours$ kubectl exec -it $POSTGRES_POD -- psql -U postgres
+
+# --- Reset du volume si BDD corrompu (stop brutal) ---
+# 1. Delete
+k delete service postgres-service
+k delete deployment postgres-deployment
+k delete pvc postgres-pvc-claim
+# <!> Supprimer le ticket de stockage (PVC) Sur Minikube, cela supprime aussi physiquement les données (le PV)
+
+# 2. RESTART ! On recrée le tout (Disque neuf + BDD neuve)
+k apply -f postgres-storage.yaml
+k apply -f postgres-deployment.yaml
+k apply -f postgres-service.yaml
+```
+
+#### Hpa. Métriques
+```
+# init
+minikube addons enable metrics-server
+kubectl get pods -n kube-system | grep metrics
+
+# watch
+kubectl top nodes
+kubectl top pods
+
+# -- Test de perf --
+# On lance un pod qui fait une boucle infinie de requêtes (wget) vers notre service
+kubectl run -i --tty load-generator --rm --image=busybox --restart=Never -- /bin/sh -c "while sleep 0.01; do wget -q -O- http://kube-train-service; done"
+
+# Restart du minikub si "kubectl top" KO (warning bdd)
+minikube stop && minikube start
+```
+
+#### Locust
+```
+# Activation du venv
+source venv/bin/activate
+
+# Check 
+locust -V
+
+# Lancement du script
+kubectl port-forward service/kube-train-service 8080:80
+locust -f locustfile.py
+=> http://localhost:8089
+=> 5000 Users 50 ramp up
+
+# Installation
+sudo apt install python3-venv -y
+python3 -m venv venv
+source venv/bin/activate
+pip install locust
+
 ```

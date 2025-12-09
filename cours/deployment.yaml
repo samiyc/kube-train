@@ -21,6 +21,31 @@ spec:
         ports:
         - containerPort: 8080
         
+        #HPA
+        resources:
+          requests:
+            cpu: "200m"     # Il réserve 0.2 CPU au démarrage
+            memory: "256Mi" # Il réserve 256 Mo de RAM
+          limits:
+            cpu: "500m"     # Il ne pourra jamais dépasser 0.5 CPU (sinon il est bridé)
+            memory: "512Mi" # S'il dépasse 512 Mo, Kubernetes le tue (OOMKilled)
+        
+        #Pod startup check
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 15   # Attendre 15s avant de commencer à vérifier (laisser le temps à Java de boot)
+          periodSeconds: 10         # Vérifier toutes les 10s
+        #Pod alive check
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 10   # Commencer à vérifier après 10s
+          periodSeconds: 5          # Vérifier souvent
+          failureThreshold: 3       # Si ça échoue 3 fois, on coupe le trafic
+        
         # Injection en masse (ConfigMap + Secrets)
         envFrom:
           - configMapRef:

@@ -1,0 +1,47 @@
+--- Python (Locust) ---
+
+venv/
+pycache/
+*.pyc
+*.pyo
+
+--- Java / Maven ---
+
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+On garde le wrapper Maven (mvnw), c'est une bonne pratique
+
+!mvnw
+
+!mvnw.cmd
+
+--- IDEs (IntelliJ, VSCode, Eclipse) ---
+
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+*.swp
+
+--- OS ---
+
+.DS_Store
+Thumbs.db
+
+--- Kubernetes (Sécurité) ---
+
+Ignore les fichiers de secrets s'ils sont créés localement
+
+*secret.yaml
+*secrets.yaml
+
+Ignore les fichiers générés par les commandes "dry-run"
+
+generated.yaml
