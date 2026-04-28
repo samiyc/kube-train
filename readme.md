@@ -85,6 +85,37 @@ Health Probes (Liveness/Readiness), HPA Autoscaling
 
 # 📝 Cheat Sheet / Mémo Commandes
 
+### Quick Start / Reprendre le projet après une pause
+
+```bash
+# 1. Lancer Minikube
+minikube start --driver=docker
+
+# 2. Recréer les pré-requis du Deployment (AVANT tout kubectl apply)
+# Si le secret existe déjà : `error: secrets "kube-train-secrets" already exists`
+# => c'est OK, on passe à la suite.
+kubectl apply -f configmap.yaml
+kubectl create secret generic kube-train-secrets \
+  --from-literal=API_KEY=S3CR3T-K3Y-12345 \
+  --from-literal=DB_PASSWORD=root
+
+# 3. Appliquer les manifests (dans l'ordre)
+kubectl apply -f postgres-storage.yaml
+kubectl apply -f postgres-deployment.yaml
+kubectl apply -f postgres-service.yaml
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
+
+# 4. Vérifier
+kubectl get pods   # Tout doit être Running + Ready (1/1) 
+```
+
+Piège classique : après un `minikube start`, les pods crashent en `CreateContainerConfigError`  
+parce que la `ConfigMap` et le `Secret` n'existent plus (ils ne survivent pas forcément à un reset du cluster).
+
+👉 Ensuite voir [Tester l'API (navigateur web / curl)](#tester-lapi-navigateur-web--curl)
+
+
 #### Minikube  
 Avant chaque utilisation lancer : ```minikube start --driver=docker```
 ```
@@ -179,6 +210,28 @@ kubectl rollout undo deployment/kube-train-deployment
 # Forcer le redémarrage (pour prendre en compte une ConfigMap/Secret)
 k rollout restart deployment/kube-train-deployment
 ```
+
+#### Tester l'API (navigateur web / curl)
+
+La méthode la plus simple est le `port-forward`, on branche un port local directement sur le Service Kubernetes.
+
+```bash
+# Lancer le tunnel (bloque le terminal, ouvrir un 2ème onglet pour curl)
+kubectl port-forward service/kube-train-service 8080:80
+
+# Dans un autre terminal (ou navigateur Windows → http://localhost:8080)
+curl http://localhost:8080/           # Page d'accueil (message ConfigMap + nom du pod)
+curl http://localhost:8080/reserver   # Réservation de billet
+curl http://localhost:8080/secure     # Zone sécurisée (affiche la clé API du Secret)
+```
+
+Résumé des 3 méthodes d'accès :
+
+| Méthode | Commande | URL |
+|---|---|---|
+| port-forward (recommandé) | `kubectl port-forward svc/kube-train-service 8080:80` | `http://localhost:8080` |
+| minikube service | `minikube service kube-train-service --url` | URL affichée par la commande |
+| Ingress (voir section suivante) | `kubectl apply -f ingress.yaml` | `curl -H "Host: api.kube-train.local" http://127.0.0.1` |
 
 #### Commande Ingress (Accés externes)
 ```

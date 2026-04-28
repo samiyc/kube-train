@@ -30,6 +30,10 @@ On garde le wrapper Maven (mvnw), c'est une bonne pratique
 .settings/
 *.swp
 
+--- GitHub (Copilot instructions) ---
+
+.github/
+
 --- OS ---
 
 .DS_Store
