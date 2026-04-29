@@ -8,6 +8,12 @@ metadata:
     app: kube-train
 spec:
   replicas: 1  # GKE Autopilot quota gratuit : 1 replica au démarrage
+  # Quota limité : on tue l'ancien pod AVANT de créer le nouveau (évite 2 pods simultanés)
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0        # Ne pas créer de pod supplémentaire pendant la mise à jour
+      maxUnavailable: 1  # Autoriser 1 pod indisponible (l'ancien se termine en premier)
   selector:
     matchLabels:
       app: kube-train-pod
