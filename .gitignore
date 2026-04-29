@@ -32,7 +32,7 @@ On garde le wrapper Maven (mvnw), c'est une bonne pratique
 
 --- GitHub (Copilot instructions) ---
 
-.github/
+.github/copilot-instructions.md
 
 --- OS ---
 

@@ -1,0 +1,79 @@
+name: CI/CD — Build & Deploy to GKE
+
+on:
+  push:
+    branches: [main]
+
+# Empêche deux déploiements en parallèle (le second attend la fin du premier)
+concurrency:
+  group: deploy-gke
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write  # Requis pour Workload Identity Federation
+
+env:
+  PROJECT_ID: kube-train-project
+  REGION: europe-west1
+  GKE_CLUSTER: kube-train-cluster
+  IMAGE: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api
+
+jobs:
+  test:
+    name: Tests Maven
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Lancer les tests
+        run: ./mvnw test
+        working-directory: kube-train-api
+
+  build-and-deploy:
+    name: Build & Deploy
+    needs: test  # Le déploiement ne se lance que si les tests passent
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authentification GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/399291708401/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-actions-sa@kube-train-project.iam.gserviceaccount.com
+
+      - name: Configurer Docker pour Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+
+      - name: Build & Push de l'image Docker
+        run: |
+          docker build \
+            -t ${{ env.IMAGE }}:${{ github.sha }} \
+            kube-train-api/
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Récupérer les credentials GKE
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.REGION }}
+
+      - name: Déployer sur GKE
+        run: |
+          # Injecter le tag git SHA dans le manifest avant d'appliquer (évite un double rollout)
+          sed "s|IMAGE_TAG_PLACEHOLDER|${{ env.IMAGE }}:${{ github.sha }}|g" \
+            cours/deployment-gke.yaml | kubectl apply -f -
+          kubectl apply -f cours/configmap.yaml
+          kubectl apply -f cours/service.yaml
+          kubectl apply -f cours/hpa.yaml
+
+      - name: Vérifier le déploiement
+        run: kubectl rollout status deployment/kube-train-deployment --timeout=5m
