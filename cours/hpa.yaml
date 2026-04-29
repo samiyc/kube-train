@@ -8,11 +8,11 @@ spec:
     kind: Deployment
     name: kube-train-deployment
   minReplicas: 1
-  maxReplicas: 10
+  maxReplicas: 2  # Limité au quota GCP gratuit (1 pod actif + 1 max lors du scaling)
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 50 # Le seuil déclencheur (50% de la "request" définie plus haut)
+        averageUtilization: 70  # Seuil relevé à 70% (évite de scaler trop vite avec peu de ressources)

@@ -18,6 +18,7 @@ env:
   REGION: europe-west1
   GKE_CLUSTER: kube-train-cluster
   IMAGE: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # Évite le warning Node.js 20 deprecated
 
 jobs:
   test:

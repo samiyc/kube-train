@@ -7,7 +7,7 @@ metadata:
   labels:
     app: kube-train
 spec:
-  replicas: 2
+  replicas: 1  # GKE Autopilot quota gratuit : 1 replica au démarrage
   selector:
     matchLabels:
       app: kube-train-pod
