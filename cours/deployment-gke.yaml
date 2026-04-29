@@ -1,5 +1,5 @@
-# Deployment Minikube — image locale (imagePullPolicy: Never)
-# Pour GKE, utiliser deployment-gke.yaml
+# Deployment GKE — image depuis Artifact Registry
+# Pour Minikube, utiliser deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,8 +18,9 @@ spec:
     spec:
       containers:
       - name: api-container
-        image: kube-train-api:v4  # 👈 Passage en V4
-        imagePullPolicy: Never
+        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api:v4
+        # GKE pull depuis Artifact Registry (auth gérée automatiquement par GKE)
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
         
@@ -55,9 +56,9 @@ spec:
           - secretRef:
               name: kube-train-secrets
         
-        # Injection manuelle (CORRECTION 2 : Mapping explicite)
+        # Injection manuelle (Mapping explicite)
         env:
-        - name: TRAIN_API_KEY  # 👈 On renomme ici pour matcher "train.api.key" du Java
+        - name: TRAIN_API_KEY  # On renomme ici pour matcher "train.api.key" du Java
           valueFrom:
             secretKeyRef:
               name: kube-train-secrets
