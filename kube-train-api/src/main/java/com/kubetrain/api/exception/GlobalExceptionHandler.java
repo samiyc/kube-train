@@ -1,5 +1,6 @@
 package com.kubetrain.api.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -24,6 +25,7 @@ import java.util.stream.Collectors;
  *  → @RestControllerAdvice + @ExceptionHandler + ProblemDetail (RFC 9457)
  *  → JAMAIS de stack trace exposée au client (faille de sécurité)
  */
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -80,8 +82,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleGeneric(Exception ex) {
-        // En prod : logger l'erreur complète (Sentry, Cloud Logging, etc.)
-        // log.error("Erreur interne non gérée", ex);
+        log.error("Erreur interne non gérée", ex);
 
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
                 HttpStatus.INTERNAL_SERVER_ERROR,

@@ -1,6 +1,8 @@
 package com.kubetrain.api.service;
 
 import com.kubetrain.api.dto.*;
+import com.kubetrain.api.event.ReservationEvent;
+import com.kubetrain.api.event.ReservationEventPublisher;
 import com.kubetrain.api.exception.TrainNotFoundException;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +25,12 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Service
 public class TrainService {
+
+    private final ReservationEventPublisher eventPublisher;
+
+    public TrainService(ReservationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
 
     // Simule une base de données en mémoire (remplacé par Postgres/JPA en vrai)
     private static final Map<String, TrainResponse> TRAINS = Map.of(
@@ -51,8 +59,10 @@ public class TrainService {
     public ReservationResponse createReservation(CreateReservationRequest request) {
         TrainResponse train = getTrainById(request.trainId());
 
+        String reservationId = "RES-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+
         ReservationResponse reservation = ReservationResponse.builder()
-                .reservationId("RES-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
+                .reservationId(reservationId)
                 .status("CONFIRMED")
                 .trainId(train.id())
                 .wagon("Wagon " + (int) (Math.random() * 12 + 1))
@@ -61,6 +71,17 @@ public class TrainService {
                 .build();
 
         reservations.put(reservation.reservationId(), reservation);
+
+        // Publier l'événement Kafka (sync — attend l'ack du broker)
+        eventPublisher.publish(ReservationEvent.builder()
+                .eventId(UUID.randomUUID().toString())
+                .reservationId(reservationId)
+                .trainId(train.id())
+                .passengerName(request.passengerName())
+                .price(train.price())
+                .createdAt(Instant.now())
+                .build());
+
         return reservation;
     }
 

@@ -1,5 +1,6 @@
 package com.kubetrain.api.controller;
 
+import com.kubetrain.api.config.EventPublisherConfig;
 import com.kubetrain.api.service.TrainService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -28,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *  - @DisplayName pour des noms lisibles dans le rapport
  */
 @WebMvcTest(TrainController.class)
-@Import(TrainService.class)
+@Import({TrainService.class, EventPublisherConfig.class})
 class TrainControllerTest {
 
     @Autowired
