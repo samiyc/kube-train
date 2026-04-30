@@ -284,3 +284,36 @@ Les jours 1 (API-First) et 5 (intégration) sont importants mais moins urgents.
 - [Datadog Learning Center](https://learn.datadoghq.com/)
 - [OpenAPI Generator](https://openapi-generator.tech/)
 - [Strimzi - Kafka on Kubernetes](https://strimzi.io/)
+
+
+----
+
+
+## 📋 Récap des APIs
+```
+┌─────────┬──────────────────────────┬──────────────────────────────────────────┬───────────────┐
+│ Méthode │ URL                      │ Description                              │ Status codes  │
+├─────────┼──────────────────────────┼──────────────────────────────────────────┼───────────────┤
+│ GET     │ /                        │ Page d'accueil (message ConfigMap + pod) │ 200           │
+├─────────┼──────────────────────────┼──────────────────────────────────────────┼───────────────┤
+│ GET     │ /trains                  │ Liste tous les trains                    │ 200           │
+├─────────┼──────────────────────────┼──────────────────────────────────────────┼───────────────┤
+│ GET     │ /trains/{id}             │ Détail d'un train                        │ 200, 404      │
+├─────────┼──────────────────────────┼──────────────────────────────────────────┼───────────────┤
+│ POST    │ /reservations            │ Créer une réservation (JSON body)        │ 201, 400, 404 │
+├─────────┼──────────────────────────┼──────────────────────────────────────────┼───────────────┤
+│ GET     │ /reservations/{id}       │ Consulter une réservation                │ 200, 404      │
+├─────────┼──────────────────────────┼──────────────────────────────────────────┼───────────────┤
+│ GET     │ /secure                  │ Zone protégée (header X-API-KEY)         │ 200, 401      │
+├─────────┼──────────────────────────┼──────────────────────────────────────────┼───────────────┤
+│ GET     │ /actuator/health         │ Health check (K8s probes)                │ 200           │
+├─────────┼──────────────────────────┼──────────────────────────────────────────┼───────────────┤
+│ GET     │ /swagger-ui/index.html   │ Swagger UI interactif                    │ 200           │
+└─────────┴──────────────────────────┴──────────────────────────────────────────┴───────────────┘
+```
+Test en local
+```
+mvnw spring-boot:run   # Ou start du springboot via l'ide
+=> http://localhost:8080/swagger-ui/index.html
+```
+
