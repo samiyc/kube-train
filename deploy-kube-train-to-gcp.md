@@ -41,7 +41,8 @@ exec -l $SHELL  #restart shell
 
 #### Config gcloud
 ```
-gcloud init    # Login + sélection du projet (inclut déjà gcloud auth login)
+gcloud auth login    # Login simple
+gcloud init          # Login + sélection du projet
 gcloud auth configure-docker europe-west1-docker.pkg.dev
 ```
 
@@ -58,6 +59,26 @@ gcloud container clusters create-auto kube-train-cluster --region=europe-west1
 gcloud container clusters get-credentials kube-train-cluster --region=europe-west1
 kubectl config current-context    # => gke_kube-train-project_europe-west1_kube-train-cluster
 kubectl get nodes                 # Pas de node par default avec GKE Autopilot
+```
+
+#### Gestion du cluster (économiser les crédits)
+GKE Autopilot n'a pas de start/stop natif — on scale les pods à 0 pour "éteindre"
+```
+# Nombre de pods
+kubectl scale deployment kube-train-deployment --replicas=0
+kubectl scale deployment kube-train-deployment --replicas=1
+
+# Vérifier l'état
+kubectl get pods
+
+# Supprimer le cluster complètement (destroy, ~10 min pour recréer)
+gcloud container clusters delete kube-train-cluster --region=europe-west1
+
+# --- Recréer le cluster (après suppression) ---
+gcloud container clusters create-auto kube-train-cluster --region=europe-west1
+gcloud container clusters get-credentials kube-train-cluster --region=europe-west1
+kubectl create secret generic kube-train-secrets --from-literal=API_KEY=<ta-clé>
+kubectl apply -f configmap.yaml && kubectl apply -f deployment-gke.yaml && kubectl apply -f service.yaml && kubectl apply -f hpa.yaml
 ```
 
 #### Configuration k8S sur GCP
