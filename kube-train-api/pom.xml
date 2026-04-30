@@ -29,6 +29,18 @@
 	<properties>
 		<java.version>21</java.version>
 	</properties>
+	<!-- Spring Cloud BOM : gère les versions de Spring Cloud Contract, etc. -->
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.cloud</groupId>
+				<artifactId>spring-cloud-dependencies</artifactId>
+				<version>2025.1.1</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -66,6 +78,12 @@
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!-- Spring Cloud Contract : génère des tests à partir des contrats YAML -->
+		<dependency>
+			<groupId>org.springframework.cloud</groupId>
+			<artifactId>spring-cloud-starter-contract-verifier</artifactId>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -73,6 +91,23 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+			<!--
+				Spring Cloud Contract Maven Plugin
+				🎯 Ce plugin fait 2 choses :
+				  1. Génère des tests JUnit à partir des contrats YAML (vérifie le PRODUCER)
+				  2. Génère des stubs WireMock (JAR) pour les CONSUMERS
+				Les tests générés étendent BaseContractTest et vérifient que
+				notre API respecte les contrats définis dans src/test/resources/contracts/
+			-->
+			<plugin>
+				<groupId>org.springframework.cloud</groupId>
+				<artifactId>spring-cloud-contract-maven-plugin</artifactId>
+				<extensions>true</extensions>
+				<configuration>
+					<baseClassForTests>com.kubetrain.api.BaseContractTest</baseClassForTests>
+					<testMode>MOCKMVC</testMode>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>

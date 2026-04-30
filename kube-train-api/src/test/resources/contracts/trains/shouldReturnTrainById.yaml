@@ -1,0 +1,18 @@
+# Contrat : le producer DOIT retourner les détails d'un train existant
+# Ce fichier est la SOURCE DE VÉRITÉ du comportement attendu de l'API.
+# Si quelqu'un modifie le controller de manière incompatible → ce test échoue.
+description: "Retourne les détails d'un train existant par son identifiant"
+name: shouldReturnTrainById
+request:
+  method: GET
+  url: /trains/TGV-7042
+response:
+  status: 200
+  headers:
+    Content-Type: application/json
+  body:
+    id: "TGV-7042"
+    origin: "Paris Gare du Nord"
+    destination: "Lille Europe"
+    price: 29.9
+    availableSeats: 142

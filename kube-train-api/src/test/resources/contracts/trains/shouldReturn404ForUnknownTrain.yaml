@@ -1,0 +1,25 @@
+# Contrat : le producer DOIT retourner 404 avec un ProblemDetail pour un train inexistant
+# Le format ProblemDetail (RFC 9457) est le standard pour les erreurs en REST.
+# Content-Type: application/problem+json (pas application/json !)
+description: "Retourne 404 ProblemDetail pour un train inexistant"
+name: shouldReturn404ForUnknownTrain
+request:
+  method: GET
+  url: /trains/UNKNOWN-999
+response:
+  status: 404
+  headers:
+    Content-Type: application/problem+json
+  body:
+    title: "Ressource introuvable"
+    status: 404
+    type: "https://api.kube-train.local/errors/not-found"
+    instance: "/trains/UNKNOWN-999"
+  matchers:
+    body:
+      - path: $.detail
+        type: by_regex
+        value: 'Train introuvable : .*'
+      - path: $.timestamp
+        type: by_regex
+        value: '\d{4}-\d{2}-\d{2}T.*'

@@ -1,0 +1,40 @@
+# Contrat : le producer DOIT créer une réservation et retourner 201
+# Les champs dynamiques (reservationId, wagon, departureTime) sont validés par regex.
+#
+# 🎯 Pourquoi des matchers ?
+#  Le reservationId contient un UUID → différent à chaque appel.
+#  Le contrat vérifie le FORMAT (RES-XXXXXXXX) sans imposer la valeur exacte.
+#  C'est la bonne pratique : tester le contrat, pas l'implémentation.
+description: "Crée une réservation pour un train existant"
+name: shouldCreateReservation
+request:
+  method: POST
+  url: /reservations
+  headers:
+    Content-Type: application/json
+  body:
+    trainId: "TGV-7042"
+    passengerName: "Jean Dupont"
+    passengerEmail: "jean@example.com"
+response:
+  status: 201
+  headers:
+    Content-Type: application/json
+  body:
+    status: "CONFIRMED"
+    trainId: "TGV-7042"
+    price: 29.9
+  matchers:
+    body:
+      - path: $.reservationId
+        type: by_regex
+        value: 'RES-[A-Z0-9]{8}'
+      - path: $.wagon
+        type: by_regex
+        value: 'Wagon \d+'
+      - path: $.departureTime
+        type: by_regex
+        value: '\d{4}-\d{2}-\d{2}T.*'
+    headers:
+      - key: Location
+        regex: '/reservations/RES-[A-Z0-9]{8}'

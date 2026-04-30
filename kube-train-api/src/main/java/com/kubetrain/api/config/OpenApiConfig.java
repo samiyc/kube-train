@@ -31,8 +31,9 @@ public class OpenApiConfig {
                                 .name("Sami Yanez-Carbonell")
                                 .url("https://github.com/samiyc/kube-train")))
                 .servers(List.of(
-                        new Server().url("http://localhost:8080").description("Local"),
-                        new Server().url("http://104.155.124.69").description("GKE Autopilot")
+                        // "/" = URL relative → utilise la même origine que la page
+                        // Fonctionne partout : localhost, GKE, n'importe quel domaine
+                        new Server().url("/").description("Serveur courant")
                 ));
     }
 }
