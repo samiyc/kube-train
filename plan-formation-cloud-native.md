@@ -313,7 +313,41 @@ Les jours 1 (API-First) et 5 (intégration) sont importants mais moins urgents.
 ```
 Test en local
 ```
-mvnw spring-boot:run   # Ou start du springboot via l'ide
+# Lancer les deux application SpringBoot
+IntelliJ : run kube-train-api  ← avec env-var KAFKA_ENABLED=true
+IntelliJ : run notification
+
+# Lancer le conteneur kafka dans le bash
+# ou dans l'ide => Services
+docker compose up -d
+
+# Url du swagger pour tester les APIs
 => http://localhost:8080/swagger-ui/index.html
 ```
-
+Check les logs Kafka sur le conteneur
+```
+docker exec kafka-kube-train /opt/kafka/bin/kafka-console-consumer.sh \
+   --bootstrap-server localhost:9092 --topic train-reservations --from-beginning
+```
+### 🏗️ Écarts vs production — audit rapide
+```
+┌───────────────────┬──────────────────────────┬───────────────────────────────────────┐
+│ Aspect            │ Ce POC                   │ Production                            │
+├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ BDD               │ In-memory (HashMap)      │ PostgreSQL/MySQL + JPA/Hibernate      │
+├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Front             │ Swagger UI               │ React/Angular/Vue                     │
+├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Auth              │ Header X-API-KEY basique │ OAuth2/OIDC (Keycloak, GCP IAP)       │
+├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Observabilité     │ Logs console             │ Prometheus + Grafana + Cloud Logging  │
+├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Config            │ application.properties   │ Spring Cloud Config / Secret Manager  │
+├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Schema Kafka      │ JSON brut                │ Avro + Schema Registry                │
+├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Tests             │ Unit + Contract          │ + Integration (Testcontainers) + E2E  │
+├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Résilience        │ Aucune                   │ Circuit Breaker (Resilience4j), Retry │
+└───────────────────┴──────────────────────────┴───────────────────────────────────────┘
+```
