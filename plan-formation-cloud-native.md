@@ -324,8 +324,10 @@ docker compose up -d
 # Url du swagger pour tester les APIs
 => http://localhost:8080/swagger-ui/index.html
 ```
-Check les logs Kafka sur le conteneur
+Check les logs Kafka (uniquement un conteneur pour le consumer et le producer)
 ```
+docker exec kafka-kube-train /opt/kafka/bin/kafka-console-producer.sh \
+   --bootstrap-server localhost:9092 --topic train-reservations
 docker exec kafka-kube-train /opt/kafka/bin/kafka-console-consumer.sh \
    --bootstrap-server localhost:9092 --topic train-reservations --from-beginning
 ```
