@@ -93,26 +93,12 @@ jobs:
       - name: Vérifier le déploiement
         run: kubectl rollout status deployment/kube-train-deployment --timeout=5m
 
-      # Prérequis : cert-manager installé une fois manuellement sur le cluster.
-      # L'email est injecté depuis GitHub Secrets (hors dépôt et masqué dans les logs).
-      # Le webhook cert-manager peut mettre du temps à être opérationnel (CA bundle propagé
-      # par le cainjector) même après que le pod est Ready → boucle de retry.
-      - name: Configurer ClusterIssuer Let's Encrypt
-        run: |
-          echo "Attente du webhook cert-manager (CA bundle)..."
-          for i in $(seq 1 12); do
-            if sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|${{ secrets.LETSENCRYPT_EMAIL }}|g" \
-                 cours/cluster-issuer.yaml | kubectl apply -f - 2>/dev/null; then
-              echo "ClusterIssuer appliqué avec succès"
-              exit 0
-            fi
-            echo "Tentative $i/12 — webhook pas encore prêt, retry dans 10s..."
-            sleep 10
-          done
-          echo "Échec après 12 tentatives (2 min)"
-          exit 1
-
       # Résout l'IP externe du nginx-ingress-controller pour construire le host nip.io,
+      # puis applique l'Ingress GKE avec TLS activé.
+      # Prérequis (setup manuel unique) : nginx-ingress, cert-manager, ClusterIssuer letsencrypt-prod
+      #   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.3/deploy/static/provider/cloud/deploy.yaml
+      #   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+      #   sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|email@example.com|g" cours/cluster-issuer.yaml | kubectl apply --validate=false -f -
       # puis applique l'Ingress GKE avec TLS activé.
       - name: Déployer l'Ingress HTTPS (nip.io)
         run: |

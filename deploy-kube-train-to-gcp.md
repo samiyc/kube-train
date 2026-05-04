@@ -214,20 +214,53 @@ K8s Secret (kube-train-secrets)
 
 Spring Boot @Value("${train.api.key}")
 ```
-#### HTTPS et Nom de domaine
-```
-# nginx-ingress controller (load balancer public sur GKE)
+#### HTTPS sur GKE — Setup manuel unique (nginx-ingress + cert-manager + ClusterIssuer)
+
+- GKE Autopilot bloque l'accès à `kube-system` → cert-manager doit être installé via Helm (pas raw YAML)  
+- L'email Let's Encrypt est passé en dur dans la commande ci-dessous (jamais commité).  
+Il n'y a pas de secret GitHub à créer pour ce setup. Le ClusterIssuer est appliqué manuellement.
+
+```bash
+# 1. nginx-ingress controller — crée un LoadBalancer public sur GKE
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.3/deploy/static/provider/cloud/deploy.yaml
 
-# cert-manager (gestion automatique des certificats TLS)
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+# 2. Récupérer l'IP externe du nginx-ingress (peut prendre 1-2 min)
+kubectl get service ingress-nginx-controller -n ingress-nginx --watch
+# → noter l'IP : sera l'URL nip.io (ex: api.34.78.39.236.nip.io)
 
-# Attendre que cert-manager soit prêt
+# 3. Installer Helm
+sudo snap install helm --classic
+
+# 4. Installer cert-manager via Helm (leader election dans cert-manager, pas kube-system)
+helm repo add jetstack https://charts.jetstack.io --force-update
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --version v1.16.2 \
+  --set crds.enabled=true \
+  --set global.leaderElection.namespace=cert-manager
+
+# 5. Attendre que cert-manager soit prêt
 kubectl wait --namespace cert-manager \
   --for=condition=ready pod \
   --selector=app.kubernetes.io/instance=cert-manager \
   --timeout=120s
 
-# Récupérer l'IP externe du nginx-ingress (peut prendre 1-2 min)
-kubectl get service ingress-nginx-controller -n ingress-nginx --watch
+# 6. Vérifier le cainjector (doit afficher "Updated object", pas d'erreur kube-system)
+kubectl logs -n cert-manager -l app.kubernetes.io/component=cainjector --tail=5
+
+# 7. Appliquer le ClusterIssuer Let's Encrypt (email jamais commité)
+sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|ton-email@gmail.com|g" \
+    cours/cluster-issuer.yaml | kubectl apply -f -
+
+# Vérifier (READY=True + ACMEAccountRegistered = OK)
+kubectl get clusterissuer letsencrypt-prod
+
+# --- LANCER LA PIPELINE (git push) ---
+# Le pipeline applique l'Ingress avec host api.<IP>.nip.io automatiquement
+
+# Vérifier le certificat TLS après la pipeline (challenge ACME ~30-60s)
+kubectl get ingress
+kubectl get certificate
+kubectl describe certificate kube-train-tls
 ```
