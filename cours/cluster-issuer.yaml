@@ -1,0 +1,18 @@
+# ClusterIssuer Let's Encrypt — émet des certificats TLS gratuits via ACME HTTP01.
+# Prérequis : cert-manager installé sur le cluster.
+# LETSENCRYPT_EMAIL_PLACEHOLDER est remplacé par le pipeline depuis GitHub Variables
+# (Settings → Secrets and variables → Actions → Variables → LETSENCRYPT_EMAIL).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: LETSENCRYPT_EMAIL_PLACEHOLDER
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    solvers:
+    - http01:
+        ingress:
+          ingressClassName: nginx

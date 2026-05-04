@@ -214,3 +214,20 @@ K8s Secret (kube-train-secrets)
 
 Spring Boot @Value("${train.api.key}")
 ```
+#### HTTPS et Nom de domaine
+```
+# nginx-ingress controller (load balancer public sur GKE)
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.3/deploy/static/provider/cloud/deploy.yaml
+
+# cert-manager (gestion automatique des certificats TLS)
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+
+# Attendre que cert-manager soit prêt
+kubectl wait --namespace cert-manager \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/instance=cert-manager \
+  --timeout=120s
+
+# Récupérer l'IP externe du nginx-ingress (peut prendre 1-2 min)
+kubectl get service ingress-nginx-controller -n ingress-nginx --watch
+```

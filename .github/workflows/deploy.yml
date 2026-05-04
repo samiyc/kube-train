@@ -92,3 +92,23 @@ jobs:
 
       - name: Vérifier le déploiement
         run: kubectl rollout status deployment/kube-train-deployment --timeout=5m
+
+      # Prérequis : cert-manager installé une fois manuellement sur le cluster.
+      # L'email est injecté depuis GitHub Variables (hors dépôt) puis substitué avant apply.
+      # ClusterIssuer est idempotent — sans effet si déjà à jour.
+      - name: Configurer ClusterIssuer Let's Encrypt
+        run: |
+          sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|${{ vars.LETSENCRYPT_EMAIL }}|g" \
+            cours/cluster-issuer.yaml | kubectl apply -f -
+
+      # Résout l'IP externe du nginx-ingress-controller pour construire le host nip.io,
+      # puis applique l'Ingress GKE avec TLS activé.
+      - name: Déployer l'Ingress HTTPS (nip.io)
+        run: |
+          INGRESS_IP=$(kubectl get service ingress-nginx-controller \
+            -n ingress-nginx \
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "Ingress IP  : $INGRESS_IP"
+          echo "Host nip.io : api.${INGRESS_IP}.nip.io"
+          sed "s|NIP_IO_HOST_PLACEHOLDER|api.${INGRESS_IP}.nip.io|g" \
+            cours/ingress-gke.yaml | kubectl apply -f -
