@@ -25,7 +25,8 @@ import java.util.Map;
  *
  * 🎯 Solution — DefaultErrorHandler + DeadLetterPublishingRecoverer :
  *  1. Le message est retenté N fois (ici 2 retries, donc 3 tentatives au total)
- *  2. Si toujours en erreur → envoyé sur le topic "train-reservations.DLT"
+ *  2. Si toujours en erreur → envoyé sur le topic "train-reservations-dlt"
+ *     (Spring Kafka 4.x utilise le suffixe "-dlt" en minuscules, pas ".DLT")
  *  3. Le DLT est consommé par un @KafkaListener dédié (alerting, stockage)
  *  4. Le consumer principal continue avec les messages suivants
  *
@@ -72,7 +73,7 @@ public class KafkaErrorConfig {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(dltKafkaTemplate);
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 2));
 
-        log.info("🛡️ Kafka DLT configuré : 2 retries → Dead Letter Topic");
+        log.info("[ERROR-HANDLER] Kafka DLT configuré : 2 retries → Dead Letter Topic");
         return errorHandler;
     }
 }

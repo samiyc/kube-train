@@ -48,19 +48,19 @@ public class ReservationEventConsumer {
 
         // Idempotence : ignorer les doublons
         if (!processedEventIds.add(event.eventId())) {
-            log.warn("⏭️ Événement déjà traité, ignoré : eventId={}, reservationId={}",
+            log.warn("[CONSUMER] Événement déjà traité, ignoré : eventId={}, reservationId={}",
                     event.eventId(), event.reservationId());
             return;
         }
 
-        log.info("📬 Notification reçue — Réservation {} pour le train {} (passager: {}, prix: {}€)",
+        log.info("[CONSUMER] Notification reçue — Réservation {} pour le train {} (passager: {}, prix: {}€)",
                 event.reservationId(),
                 event.trainId(),
                 event.passengerName(),
                 event.price());
 
         // Simulation d'envoi de notification (email, SMS, push...)
-        log.info("📧 Email envoyé (simulé) à {} pour la réservation {}",
+        log.info("[CONSUMER] Email envoyé (simulé) à {} pour la réservation {}",
                 event.passengerName(),
                 event.reservationId());
     }
@@ -72,9 +72,9 @@ public class ReservationEventConsumer {
      * le DefaultErrorHandler l'envoie ici au lieu de le retenter indéfiniment.
      * En prod : alerter l'équipe, stocker en BDD pour analyse, retry manuel.
      */
-    @KafkaListener(topics = "train-reservations.DLT", groupId = "notification-group")
+    @KafkaListener(topics = "train-reservations-dlt", groupId = "notification-dlt-group")
     public void handleDlt(String payload) {
-        log.error("💀 Message reçu sur DLT (Dead Letter Topic) — intervention manuelle requise : {}", payload);
+        log.error("[DLT] Message reçu sur Dead Letter Topic - intervention manuelle requise : {}", payload);
     }
 
     private ReservationEvent deserialize(String payload) {

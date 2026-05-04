@@ -28,7 +28,7 @@ public class EventPublisherConfig {
         return new ReservationEventPublisher() {
             @Override
             public void publish(ReservationEvent event) {
-                log.debug("📭 Kafka non configuré — événement ignoré : {}", event.reservationId());
+                log.debug("[EVENT-PUBLISHER-CONF] Kafka non configuré — événement ignoré : {}", event.reservationId());
             }
         };
     }

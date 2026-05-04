@@ -40,13 +40,13 @@ public class KafkaReservationEventPublisher implements ReservationEventPublisher
             kafkaTemplate.send(TOPIC, event.reservationId(), event)
                     .get(SEND_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
-            log.info("📤 Event publié sur [{}] : reservationId={}, trainId={}",
+            log.info("[EVENT-PUBLISHER] Event publié sur [{}] : reservationId={}, trainId={}",
                     TOPIC, event.reservationId(), event.trainId());
 
         } catch (Exception e) {
             // Log l'erreur mais ne bloque pas la réservation (best-effort)
             // En prod avec Outbox Pattern, on écrirait en BDD et un poller republierait
-            log.error("❌ Échec publication event : {}", event.reservationId(), e);
+            log.error("[EVENT-PUBLISHER] Échec publication event : {}", event.reservationId(), e);
         }
     }
 }

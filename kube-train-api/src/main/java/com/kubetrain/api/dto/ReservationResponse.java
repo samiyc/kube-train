@@ -24,7 +24,7 @@ import java.time.Instant;
 @Builder
 @Schema(description = "Confirmation de réservation d'un billet de train")
 public record ReservationResponse(
-        @Schema(description = "Identifiant unique de la réservation", example = "RES-20260430-001")
+        @Schema(description = "Identifiant unique de la réservation", example = "RES-20260430")
         String reservationId,
 
         @Schema(description = "Statut de la réservation", example = "CONFIRMED")
