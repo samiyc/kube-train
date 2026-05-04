@@ -94,11 +94,17 @@ jobs:
         run: kubectl rollout status deployment/kube-train-deployment --timeout=5m
 
       # Prérequis : cert-manager installé une fois manuellement sur le cluster.
-      # L'email est injecté depuis GitHub Variables (hors dépôt) puis substitué avant apply.
+      # L'email est injecté depuis GitHub Secrets (hors dépôt et masqué dans les logs).
+      # On attend que le webhook cert-manager soit prêt (CA bundle propagé) avant d'appliquer.
       # ClusterIssuer est idempotent — sans effet si déjà à jour.
       - name: Configurer ClusterIssuer Let's Encrypt
         run: |
-          sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|${{ vars.LETSENCRYPT_EMAIL }}|g" \
+          echo "Attente du webhook cert-manager..."
+          kubectl wait --namespace cert-manager \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=webhook \
+            --timeout=120s
+          sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|${{ secrets.LETSENCRYPT_EMAIL }}|g" \
             cours/cluster-issuer.yaml | kubectl apply -f -
 
       # Résout l'IP externe du nginx-ingress-controller pour construire le host nip.io,
