@@ -40,21 +40,31 @@ spec:
             cpu: "500m"     # Il ne pourra jamais dépasser 0.5 CPU (sinon il est bridé)
             memory: "512Mi" # S'il dépasse 512 Mo, Kubernetes le tue (OOMKilled)
         
-        #Pod startup check
+        # Attend que l'app soit démarrée avant d'activer liveness/readiness.
+        # failureThreshold * periodSeconds = 30 * 5 = 150s max pour démarrer.
+        # Tant que la startupProbe n'a pas réussi, la livenessProbe ne s'exécute pas.
+        startupProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          failureThreshold: 30  # 30 tentatives max
+          periodSeconds: 5      # toutes les 5s → 150s max pour démarrer
+
+        #Pod alive check (KO => Dead, Reboot pod)
         livenessProbe:
           httpGet:
             path: /actuator/health
             port: 8080
-          initialDelaySeconds: 15   # Attendre 15s avant de commencer à vérifier (laisser le temps à Java de boot)
-          periodSeconds: 10         # Vérifier toutes les 10s
-        #Pod alive check
+          periodSeconds: 10
+          failureThreshold: 3   # 3 échecs consécutifs → redémarrage du pod
+
+        #Pod ready check (KO => Overload, Retire le pod du Service)
         readinessProbe:
           httpGet:
             path: /actuator/health
             port: 8080
-          initialDelaySeconds: 10   # Commencer à vérifier après 10s
-          periodSeconds: 5          # Vérifier souvent
-          failureThreshold: 3       # Si ça échoue 3 fois, on coupe le trafic
+          periodSeconds: 5
+          failureThreshold: 3   # 3 échecs → plus de trafic vers ce pod
         
         # Injection en masse (ConfigMap + Secrets)
         envFrom:
