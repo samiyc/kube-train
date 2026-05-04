@@ -163,3 +163,54 @@ gcloud iam workload-identity-pools providers update-oidc github-provider \
    --workload-identity-pool=github-pool \
    --attribute-condition="assertion.repository=='samiyc/kube-train' && assertion.ref=='refs/heads/main'"
 ```
+#### GCP Secret Manager
+Les avantages par rapport aux Secrets K8s manuels :
+- Audit trail (Cloud Audit Logs — qui, quand, quoi)
+- Versioning (chaque modification = nouvelle version)
+- Rotation programmable
+- Indépendant du cluster (persiste même si GKE est détruit)
+- Contrôle d'accès IAM granulaire (qui peut lire quel secret)
+```
+# Activer l'API Secret Manager
+gcloud services enable secretmanager.googleapis.com --project=kube-train-project
+
+# Créer le secret avec la valeur <API_KEY>
+echo -n "<API_KEY>" | \
+  gcloud secrets create api-key \
+    --data-file=- \
+    --project=kube-train-project \
+    --labels=app=kube-train
+
+# Vérifier
+gcloud secrets versions access latest --secret=api-key --project=kube-train-project
+
+# Trouver le PROJECT_NUMBER
+gcloud projects describe kube-train-project --format='value(projectNumber)'
+
+# Donner accès au secret
+# Le SA (Service Account) utilisé par les pods par default est :
+# => {PROJECT_NUMBER}-compute@developer.gserviceaccount.com
+gcloud secrets add-iam-policy-binding api-key \
+  --project=kube-train-project \
+  --member="serviceAccount:399291708401-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+# Donne accès à github-actions-sa
+gcloud secrets add-iam-policy-binding api-key \
+   --project=kube-train-project \
+   --member="serviceAccount:github-actions-sa@kube-train-project.iam.gserviceaccount.com" \
+   --role="roles/secretmanager.secretAccessor"
+```
+Chemin de l'`API_KEY` du `Secret Manager` vers le code `Java`
+```
+GCP Secret Manager (api-key)
+=> gcloud secrets versions access latest
+
+GitHub Actions (github-actions-sa)
+=> kubectl create secret --dry-run=client | kubectl apply
+
+K8s Secret (kube-train-secrets)
+=> secretKeyRef → TRAIN_API_KEY env var
+
+Spring Boot @Value("${train.api.key}")
+```

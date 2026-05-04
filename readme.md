@@ -95,6 +95,8 @@ minikube start --driver=docker
 # Si le secret existe déjà : `error: secrets "kube-train-secrets" already exists`
 # => c'est OK, on passe à la suite.
 kubectl apply -f configmap.yaml
+# Secret pour Minikube local uniquement
+# GKE : Géré automatiquement par le pipeline CI/CD via Secret Manager
 kubectl create secret generic kube-train-secrets \
   --from-literal=API_KEY=S3CR3T-K3Y-12345 \
   --from-literal=DB_PASSWORD=root
@@ -253,7 +255,7 @@ curl http://localhost:8080/
 
 #### Secret
 ```
-# Création
+# Minikube local uniquement (GKE : géré par le pipeline CI/CD via GCP Secret Manager)
 kubectl create secret generic kube-train-secrets \
   --from-literal=API_KEY=S3CR3T-K3Y-12345 \
   --from-literal=DB_PASSWORD=root

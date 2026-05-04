@@ -67,6 +67,20 @@ jobs:
           cluster_name: ${{ env.GKE_CLUSTER }}
           location: ${{ env.REGION }}
 
+      # Lit le secret depuis GCP Secret Manager et crée/met à jour le K8s secret.
+      # Pattern "upsert" : --dry-run=client -o yaml | kubectl apply -f -
+      # → crée si absent, met à jour si présent (idempotent, safe en CI/CD)
+      # GCP Secret Manager est la source de vérité — plus besoin de "kubectl create secret" manuellement.
+      - name: Synchroniser le K8s secret depuis GCP Secret Manager
+        run: |
+          API_KEY=$(gcloud secrets versions access latest \
+            --secret=api-key \
+            --project=${{ env.PROJECT_ID }})
+          echo "::add-mask::$API_KEY"
+          kubectl create secret generic kube-train-secrets \
+            --from-literal=API_KEY="$API_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Déployer sur GKE
         run: |
           # Injecter le tag git SHA dans le manifest avant d'appliquer (évite un double rollout)
