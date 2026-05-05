@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -37,6 +38,7 @@ import java.util.List;
  *  → @RestController = @Controller + @ResponseBody sur chaque méthode
  *  → Le retour est sérialisé en JSON (via Jackson), pas résolu comme un nom de vue
  */
+@Slf4j
 @RestController
 @Tag(name = "Trains", description = "API de gestion des trains et réservations")
 public class TrainController {
@@ -61,6 +63,7 @@ public class TrainController {
     @GetMapping("/")
     public ResponseEntity<WelcomeResponse> welcome() {
         String podName = resolvePodName();
+        log.info("GET / — pod={}", podName);
         return ResponseEntity.ok(new WelcomeResponse(welcomeMessage, podName));
     }
 
@@ -100,7 +103,9 @@ public class TrainController {
     @PostMapping("/reservations")
     public ResponseEntity<ReservationResponse> createReservation(
             @Valid @RequestBody CreateReservationRequest request) {
+        log.info("POST /reservations — passager={}, train={}", request.passengerName(), request.trainId());
         ReservationResponse reservation = trainService.createReservation(request);
+        log.info("Réservation créée — id={}, wagon={}", reservation.reservationId(), reservation.wagon());
 
         // 201 Created + header Location (bonne pratique REST pour les créations)
         return ResponseEntity
@@ -118,6 +123,7 @@ public class TrainController {
     public ResponseEntity<ReservationResponse> getReservation(
             @Parameter(description = "Identifiant de la réservation", example = "RES-A1B2C3D4")
             @PathVariable String id) {
+        log.info("GET /reservations/{}", id);
         return ResponseEntity.ok(trainService.getReservation(id));
     }
 
@@ -135,15 +141,16 @@ public class TrainController {
             @Parameter(description = "Clé API d'authentification", required = true)
             @RequestHeader(value = "X-API-KEY", required = false) String providedKey) {
 
-        // Phase A : validation manuelle dans le controller
-        // Phase B (future) : déplacer dans un Filter ou Spring Security
         if (providedKey == null || providedKey.isBlank()) {
+            log.warn("GET /secure — tentative sans header X-API-KEY");
             throw new UnauthorizedException("Header X-API-KEY manquant");
         }
         if (!providedKey.equals(apiKey)) {
+            log.warn("GET /secure — clé API invalide");
             throw new UnauthorizedException("Clé API invalide");
         }
 
+        log.info("GET /secure — accès autorisé");
         return ResponseEntity.ok(new WelcomeResponse(
                 "🔐 Accès autorisé à la zone sécurisée",
                 resolvePodName()
@@ -165,3 +172,4 @@ public class TrainController {
         }
     }
 }
+

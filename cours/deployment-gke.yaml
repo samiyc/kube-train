@@ -92,6 +92,11 @@ spec:
             secretKeyRef:
               name: kube-train-secrets
               key: DB_PASSWORD
+        # Logs JSON structurés (ECS format) — Cloud Logging parse automatiquement
+        # le champ "log.level" comme severity (INFO, WARN, ERROR).
+        # Désactivé en local (application.properties) pour garder des logs lisibles.
+        - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+          value: "ecs"
 
       # Sidecar Cloud SQL Auth Proxy
       # Intercepte les connexions JDBC sur 127.0.0.1:5432 et les route de façon sécurisée vers Cloud SQL.

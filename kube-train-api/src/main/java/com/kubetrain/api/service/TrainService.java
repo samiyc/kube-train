@@ -6,6 +6,7 @@ import com.kubetrain.api.event.ReservationEvent;
 import com.kubetrain.api.event.ReservationEventPublisher;
 import com.kubetrain.api.exception.TrainNotFoundException;
 import com.kubetrain.api.repository.ReservationRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -32,6 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *  L'injection optionnelle via @Autowired(required = false) évite de démarrer une DataSource
  *  quand le profil "postgres" n'est pas actif.
  */
+@Slf4j
 @Service
 public class TrainService {
 
@@ -98,9 +100,12 @@ public class TrainService {
                     .passengerName(request.passengerName())
                     .createdAt(Instant.now())
                     .build());
+            log.info("Réservation {} persistée en Cloud SQL (train={}, passager={})",
+                    reservationId, train.id(), request.passengerName());
         } else {
             // Profil "default" : stockage en mémoire (local, tests)
             reservations.put(reservationId, response);
+            log.debug("Réservation {} stockée en mémoire (profil default)", reservationId);
         }
 
         // Publier l'événement Kafka (sync — attend l'ack du broker)
