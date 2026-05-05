@@ -326,4 +326,20 @@ gcloud secrets versions list api-key --project=kube-train-project
 
 # Suppression d'une ancienne version
 gcloud secrets versions destroy 1 --secret=api-key --project=kube-train-project
+
+# Lien Workload Identity entre le Kubernetes SA (default) et ce GCP SA
+# 1. Autoriser le K8s SA "default" (namespace default) à emprunter l'identité du compute SA
+gcloud iam service-accounts add-iam-policy-binding \
+  399291708401-compute@developer.gserviceaccount.com \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:kube-train-project.svc.id.goog[default/default]" \
+  --project=kube-train-project
+
+# 2. Annoter le K8s SA pour lui indiquer quel GCP SA utiliser
+kubectl annotate serviceaccount default \
+  iam.gke.io/gcp-service-account=399291708401-compute@developer.gserviceaccount.com \
+  --namespace=default
+
+# 3. Restart du pod
+kubectl rollout restart deployment/kube-train-deployment
 ```
