@@ -77,8 +77,21 @@ jobs:
             --secret=api-key \
             --project=${{ env.PROJECT_ID }})
           echo "::add-mask::$API_KEY"
+
+          DB_USERNAME=$(gcloud secrets versions access latest \
+            --secret=db-username \
+            --project=${{ env.PROJECT_ID }})
+          echo "::add-mask::$DB_USERNAME"
+
+          DB_PASSWORD=$(gcloud secrets versions access latest \
+            --secret=db-password \
+            --project=${{ env.PROJECT_ID }})
+          echo "::add-mask::$DB_PASSWORD"
+
           kubectl create secret generic kube-train-secrets \
             --from-literal=API_KEY="$API_KEY" \
+            --from-literal=DB_USERNAME="$DB_USERNAME" \
+            --from-literal=DB_PASSWORD="$DB_PASSWORD" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Déployer sur GKE

@@ -80,3 +80,37 @@ spec:
             secretKeyRef:
               name: kube-train-secrets
               key: API_KEY # La clé DANS le secret reste "API_KEY", c'est juste le nom de la variable qui change
+        - name: SPRING_PROFILES_ACTIVE
+          value: "postgres"
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: kube-train-secrets
+              key: DB_USERNAME
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kube-train-secrets
+              key: DB_PASSWORD
+
+      # Sidecar Cloud SQL Auth Proxy
+      # Intercepte les connexions JDBC sur 127.0.0.1:5432 et les route de façon sécurisée vers Cloud SQL.
+      # Avantages par rapport à une IP publique :
+      #   - Pas d'IP whitelist à gérer
+      #   - Chiffrement TLS automatique
+      #   - Auth via Workload Identity (pas de mot de passe de connexion proxy)
+      - name: cloud-sql-proxy
+        image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+        args:
+          - "--structured-logs"         # Logs JSON (compatibles Cloud Logging)
+          - "--port=5432"               # Port d'écoute local du proxy
+          - "kube-train-project:europe-west1:kube-train-db"
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
+        securityContext:
+          runAsNonRoot: true

@@ -1,15 +1,16 @@
-# Docker Compose — Kafka en mode KRaft (sans Zookeeper)
+# Docker Compose — Infrastructure locale pour kube-train
 #
-# 🎯 Concepts clés :
-#  - KRaft : nouveau mode de consensus Kafka (remplace Zookeeper depuis Kafka 3.3+)
-#  - Un seul nœud qui est à la fois broker ET controller (dev only, pas prod !)
-#  - Le topic est créé automatiquement par l'application Spring via NewTopic bean
+# Services :
+#   kafka    — Kafka KRaft (sans Zookeeper), port 9092
+#   postgres — PostgreSQL 15, port 5432 (profil Spring "postgres")
 #
 # Usage :
-#   docker compose up -d       # Démarrer Kafka
-#   docker compose logs -f     # Voir les logs
-#   docker compose down        # Arrêter
-#   docker compose down -v     # Arrêter + supprimer les données
+#   docker compose up -d            # Démarrer tous les services
+#   docker compose up -d kafka      # Démarrer Kafka uniquement
+#   docker compose up -d postgres   # Démarrer PostgreSQL uniquement
+#   docker compose logs -f          # Voir les logs
+#   docker compose down             # Arrêter
+#   docker compose down -v          # Arrêter + supprimer les données
 
 services:
   kafka:
@@ -32,3 +33,18 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       # ID du cluster (fixe pour éviter de regénérer à chaque restart)
       CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+
+  postgres:
+    image: postgres:15
+    container_name: postgres-kube-train
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: kube_train
+      POSTGRES_USER: kube_train_user
+      POSTGRES_PASSWORD: kube_train_pass
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-data:
