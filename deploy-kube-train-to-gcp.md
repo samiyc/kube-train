@@ -303,6 +303,12 @@ gcloud projects add-iam-policy-binding kube-train-project \
 echo -n "db_user" | gcloud secrets create db-username --data-file=- --project=kube-train-project
  echo -n "db_pass" | gcloud secrets create db-password  --data-file=- --project=kube-train-project
 
+# Vérifier que le secret K8s a les bonnes valeurs :
+kubectl get secret kube-train-secrets -o jsonpath='{.data.DB_USERNAME}' | base64 -d && echo
+kubectl get secret kube-train-secrets -o jsonpath='{.data.DB_PASSWORD}' | base64 -d && echo
+gcloud secrets versions access latest --secret=db-username --project=kube-train-project
+gcloud secrets versions access latest --secret=db-password --project=kube-train-project
+
 # Donner accès au SA pour les secrets db-username et db-password
 gcloud secrets add-iam-policy-binding db-username \
   --member="serviceAccount:github-actions-sa@kube-train-project.iam.gserviceaccount.com" \
@@ -342,4 +348,16 @@ kubectl annotate serviceaccount default \
 
 # 3. Restart du pod
 kubectl rollout restart deployment/kube-train-deployment
+kubectl rollout status deployment/kube-train-deployment --timeout=3m
+kubectl logs -f deployment/kube-train-deployment -c api-container
+
+# Synchronisation secret / postgre 
+PASS=$(gcloud secrets versions access latest --secret=db-password --project=kube-train-project)
+ gcloud sql users set-password kube_train_user \
+   --instance=kube-train-db \
+   --password="$PASS" \
+   --project=kube-train-project
+
+# Se connecter à l'instance (il demandera le mot de passe de postgres)
+gcloud sql connect kube-train-db --user=postgres --database=kube_train --project=kube-train-project
 ```
