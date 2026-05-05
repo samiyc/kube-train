@@ -241,6 +241,16 @@ Un **poller** ou **Debezium (CDC — Change Data Capture)** lit la table outbox 
 **Problème** : Transaction distribuée entre N micro-services
 (ex: Commande → Paiement → Stock → Livraison).
 
+**Saga** = séquence de transactions locales liées par des événements.
+Si une étape échoue → **transactions compensatoires** (annulation des étapes précédentes).
+
+| Style | Mécanisme | Avantage |
+|-------|-----------|----------|
+| Choreography | Chaque service écoute et publie des events | Simple, découplé |
+| Orchestration | Un orchestrateur (Saga Manager) pilote les étapes | Visible, traceable |
+
+kube-train utilise la **choreography** : `KubeTrainApi` publie → `NotificationService` écoute.
+
 **Orchestration** (chef d'orchestre) :
 ```
 OrderSaga contrôle tout → appelle chaque service → rollback si échec
@@ -302,3 +312,96 @@ public class EventPublisherConfig {
 ```
 → L'API fonctionne **avec ou sans** Kafka. En dev local : `KAFKA_ENABLED=false` → NoOp.
 En prod/docker : `KAFKA_ENABLED=true` → publication réelle.
+
+---
+
+## 📝 J3 — Notes de révision : GCP Services
+
+### GCP Secret Manager
+
+**Pourquoi Secret Manager plutôt que `kubectl create secret` ?**
+
+| Critère | kubectl create secret | GCP Secret Manager |
+|---------|----------------------|-------------------|
+| Audit trail | Non | Oui (Cloud Audit Logs) |
+| Versioning | Non | Oui (v1, v2, ...) |
+| Rotation | Manuelle | Programmable |
+| Scope | Limité au cluster | Multi-cluster, multi-service |
+| Accès | Qui a accès au cluster | IAM granulaire par secret |
+
+**Pattern CI/CD (approche retenue — sans Spring Cloud GCP)** :
+```
+GCP Secret Manager
+  → GitHub Actions (gcloud secrets versions access latest)
+  → kubectl create secret --dry-run=client -o yaml | kubectl apply   ← upsert idempotent
+  → K8s Secret → secretKeyRef → env var TRAIN_API_KEY
+  → Spring @Value("${train.api.key}")
+```
+
+**Commandes clés** :
+```bash
+# Créer le secret
+echo -n "valeur" | gcloud secrets create mon-secret --data-file=- --project=PROJECT_ID
+
+# Lire la dernière version
+gcloud secrets versions access latest --secret=mon-secret --project=PROJECT_ID
+
+# Donner l'accès à un SA
+gcloud secrets add-iam-policy-binding mon-secret \
+  --member="serviceAccount:SA@PROJECT.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+**Identifiants GCP** :
+- `projectId` = nom textuel choisi à la création (`kube-train-project`)
+- `projectNumber` = numéro auto-généré par Google, utilisé dans les SA names
+- `gcloud projects describe PROJECT_ID --format='value(projectNumber)'`
+
+**Spring Cloud GCP + Spring Boot 4** : la version 8.x (Boot 4 compatible) n'est pas encore disponible sur Maven Central (mai 2025). Le pattern CI/CD est la solution de contournement production-réaliste.
+
+---
+
+### HTTPS sur GKE — cert-manager + Let's Encrypt + nip.io
+
+**Stack HTTPS** :
+```
+nip.io (DNS gratuit)     → résout api.X.X.X.X.nip.io → IP du LoadBalancer
+nginx-ingress controller → reçoit le trafic 80/443, route vers les services
+cert-manager             → automatise le cycle de vie des certificats TLS
+Let's Encrypt (ACME)     → CA gratuite, émet des certificats valides 90 jours
+```
+
+**Rôles des composants** :
+
+| Composant | Rôle |
+|-----------|------|
+| `ClusterIssuer` | Configure cert-manager pour utiliser Let's Encrypt (compte ACME, méthode challenge) |
+| `Certificate` | Créé automatiquement par cert-manager depuis l'annotation Ingress |
+| `ACME HTTP01` | Let's Encrypt fait un GET sur `/.well-known/acme-challenge/...` pour prouver que tu possèdes le domaine |
+| `Secret kube-train-tls` | Stocke le certificat TLS émis, monté par nginx-ingress |
+
+**Flow d'émission d'un certificat** :
+```
+kubectl apply ingress (annotation cert-manager.io/cluster-issuer)
+  → cert-manager crée un Certificate + une Challenge
+  → cert-manager déploie un pod temporaire qui répond à /.well-known/acme-challenge/...
+  → nginx-ingress route la requête de Let's Encrypt vers ce pod
+  → Let's Encrypt valide → émet le certificat
+  → cert-manager stocke dans Secret kube-train-tls
+  → nginx-ingress sert le certificat sur port 443
+```
+
+**GKE Autopilot — piège connu** :
+- Installation raw YAML : cainjector essaie de créer des `leases` dans `kube-system` → **bloqué** par GKE Warden
+- Solution : installer via **Helm** avec `--set global.leaderElection.namespace=cert-manager`
+- Sans cainjector → CA bundle non injecté → webhook TLS cassé → `x509: certificate signed by unknown authority`
+
+**Commandes de vérification** :
+```bash
+kubectl get certificate                          # READY=True = certificat émis
+kubectl describe certificate kube-train-tls      # détails + dates expiration
+kubectl get clusterissuer letsencrypt-prod        # READY=True = compte ACME enregistré
+curl -v https://api.X.X.X.X.nip.io/ 2>&1 | grep issuer  # vérifier Let's Encrypt
+```
+
+**nip.io** : service DNS public gratuit. `api.1.2.3.4.nip.io` résout toujours vers `1.2.3.4`. Pas d'inscription, fonctionne immédiatement. Idéal pour les formations/démos sans domaine.

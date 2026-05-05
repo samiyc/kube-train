@@ -64,7 +64,7 @@ kubectl get nodes                 # Pas de node par default avec GKE Autopilot
 #### Gestion du cluster (économiser les crédits)
 GKE Autopilot n'a pas de start/stop natif — on scale les pods à 0 pour "éteindre"
 ```
-# Nombre de pods
+# Nombre de pods => Start / Shutdown / turnoff / kill
 kubectl scale deployment kube-train-deployment --replicas=0
 kubectl scale deployment kube-train-deployment --replicas=1
 
