@@ -283,33 +283,30 @@ gcloud sql databases create kube_train \
   --instance=kube-train-db \
   --project=kube-train-project
 
-# Créer l'utilisateur applicatif (pas root)
+# ⚠️ ORDRE IMPORTANT : générer le mot de passe EN PREMIER, stocker dans Secret Manager,
+# puis créer l'utilisateur Cloud SQL avec CE mot de passe.
+# Si les deux ne sont pas synchronisés → "password authentication failed" au démarrage du pod.
+
+# 1. Générer un mot de passe aléatoire (le ' ' en début de ligne évite le bash history)
+ DB_PASS=$(openssl rand -base64 32)
+# Backup sur KeePass avant de continuer !
+
+# 2. Stocker dans GCP Secret Manager (source de vérité)
+ echo -n "kube_train_user" | gcloud secrets create db-username --data-file=- --project=kube-train-project
+ echo -n "$DB_PASS"        | gcloud secrets create db-password  --data-file=- --project=kube-train-project
+
+# 3. Créer l'utilisateur Cloud SQL avec le MÊME mot de passe
 gcloud sql users create kube_train_user \
   --instance=kube-train-db \
-  --password=kube_train_pass \
+  --password="$DB_PASS" \
   --project=kube-train-project
 
-# Autoriser le SA GKE à se connecter via Cloud SQL Auth Proxy (IAM)
+# Autoriser le SA GKE à se connecter via Cloud SQL Auth Proxy (IAM — niveau projet)
 gcloud projects add-iam-policy-binding kube-train-project \
   --member="serviceAccount:399291708401-compute@developer.gserviceaccount.com" \
   --role="roles/cloudsql.client"
 
-⚠️ Gestion des MDP => *
-# Random mdp : openssl rand -base64 32
-# ' ' before mdp bash line => skip history
-# Backup mdp sur KeePass
-
-# Créer les secrets DB dans GCP Secret Manager *
-echo -n "db_user" | gcloud secrets create db-username --data-file=- --project=kube-train-project
- echo -n "db_pass" | gcloud secrets create db-password  --data-file=- --project=kube-train-project
-
-# Vérifier que le secret K8s a les bonnes valeurs :
-kubectl get secret kube-train-secrets -o jsonpath='{.data.DB_USERNAME}' | base64 -d && echo
-kubectl get secret kube-train-secrets -o jsonpath='{.data.DB_PASSWORD}' | base64 -d && echo
-gcloud secrets versions access latest --secret=db-username --project=kube-train-project
-gcloud secrets versions access latest --secret=db-password --project=kube-train-project
-
-# Donner accès au SA pour les secrets db-username et db-password
+# Donner accès au SA CI/CD pour lire les secrets DB depuis Secret Manager
 gcloud secrets add-iam-policy-binding db-username \
   --member="serviceAccount:github-actions-sa@kube-train-project.iam.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor" \
@@ -319,45 +316,54 @@ gcloud secrets add-iam-policy-binding db-password \
   --role="roles/secretmanager.secretAccessor" \
   --project=kube-train-project
 
-# Vérifier que les secrets sont bien pris en compte
-gcloud secrets list --project=kube-train-project
+# ⚠️ OBLIGATOIRE sur GKE Autopilot : Workload Identity
+# Sur GKE Autopilot, les pods n'héritent PAS du SA des nœuds automatiquement.
+# Il faut lier le K8s SA "default" au GCP compute SA via Workload Identity.
+# Sans ça → Cloud SQL Auth Proxy reçoit un 403 "Permission denied" au démarrage.
 
-# Update des mots de passe *
- echo -n "new-api-key" | gcloud secrets versions add api-key --data-file=- --project=kube-train-project 
- echo -n "nouveau_mdp" | gcloud secrets versions add db-password --data-file=- --project=kube-train-project
- echo -n "nouveau_usr" | gcloud secrets versions add db-username --data-file=- --project=kube-train-project
-
-# Lister les versions
-gcloud secrets versions list api-key --project=kube-train-project
-
-# Suppression d'une ancienne version
-gcloud secrets versions destroy 1 --secret=api-key --project=kube-train-project
-
-# Lien Workload Identity entre le Kubernetes SA (default) et ce GCP SA
-# 1. Autoriser le K8s SA "default" (namespace default) à emprunter l'identité du compute SA
+# 1. Autoriser le K8s SA "default" à emprunter l'identité du compute SA
 gcloud iam service-accounts add-iam-policy-binding \
   399291708401-compute@developer.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
   --member="serviceAccount:kube-train-project.svc.id.goog[default/default]" \
   --project=kube-train-project
 
-# 2. Annoter le K8s SA pour lui indiquer quel GCP SA utiliser
+# 2. Annoter le K8s SA "default" pour pointer vers le GCP SA
 kubectl annotate serviceaccount default \
   iam.gke.io/gcp-service-account=399291708401-compute@developer.gserviceaccount.com \
   --namespace=default
 
-# 3. Restart du pod
-kubectl rollout restart deployment/kube-train-deployment
-kubectl rollout status deployment/kube-train-deployment --timeout=3m
-kubectl logs -f deployment/kube-train-deployment -c api-container
+# Vérifications
+gcloud secrets list --project=kube-train-project
+kubectl get secret kube-train-secrets -o jsonpath='{.data.DB_USERNAME}' | base64 -d && echo
+kubectl get secret kube-train-secrets -o jsonpath='{.data.DB_PASSWORD}' | base64 -d && echo
 
-# Synchronisation secret / postgre 
+# Si resynchronisation nécessaire (Secret Manager ≠ Cloud SQL) :
 PASS=$(gcloud secrets versions access latest --secret=db-password --project=kube-train-project)
  gcloud sql users set-password kube_train_user \
    --instance=kube-train-db \
    --password="$PASS" \
    --project=kube-train-project
 
-# Se connecter à l'instance (il demandera le mot de passe de postgres)
-gcloud sql connect kube-train-db --user=postgres --database=kube_train --project=kube-train-project
+# Gestion des versions de secrets
+gcloud secrets versions list api-key --project=kube-train-project
+ echo -n "new-value" | gcloud secrets versions add api-key --data-file=- --project=kube-train-project
+gcloud secrets versions destroy 1 --secret=api-key --project=kube-train-project
+
+# Connexion directe à la DB (Cloud Shell uniquement — cloud-sql-proxy déjà installé)
+# ⚠️ Le mot de passe postgres n'est pas connu par défaut → utiliser kube_train_user
+gcloud sql connect kube-train-db --user=kube_train_user --database=kube_train --project=kube-train-project
+
+# Vérifier les données depuis kubectl exec sur le container api (pas le proxy — image distroless)
+kubectl exec -it deployment/kube-train-deployment -c api-container -- /bin/sh
+# Depuis le pod, se connecter via le proxy local :
+# psql "postgresql://kube_train_user:$DB_PASSWORD@127.0.0.1:5432/kube_train"
+```
+#### Cloud Logging / Monitoring
+```
+# Astuce : Restart du pod et check des logs
+kubectl rollout restart deployment/kube-train-deployment
+kubectl rollout status deployment/kube-train-deployment
+kubectl logs -f deployment/kube-train-deployment -c api-container
+
 ```
