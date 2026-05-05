@@ -303,6 +303,16 @@ gcloud projects add-iam-policy-binding kube-train-project \
 echo -n "db_user" | gcloud secrets create db-username --data-file=- --project=kube-train-project
  echo -n "db_pass" | gcloud secrets create db-password  --data-file=- --project=kube-train-project
 
+# Donner accès au SA pour les secrets db-username et db-password
+gcloud secrets add-iam-policy-binding db-username \
+  --member="serviceAccount:github-actions-sa@kube-train-project.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor" \
+  --project=kube-train-project
+gcloud secrets add-iam-policy-binding db-password \
+  --member="serviceAccount:github-actions-sa@kube-train-project.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor" \
+  --project=kube-train-project
+
 # Vérifier que les secrets sont bien pris en compte
 gcloud secrets list --project=kube-train-project
 
