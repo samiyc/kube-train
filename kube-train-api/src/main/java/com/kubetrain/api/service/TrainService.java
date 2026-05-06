@@ -6,6 +6,7 @@ import com.kubetrain.api.event.ReservationEvent;
 import com.kubetrain.api.event.ReservationEventPublisher;
 import com.kubetrain.api.exception.TrainNotFoundException;
 import com.kubetrain.api.repository.ReservationRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -38,13 +39,15 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TrainService {
 
     private final ReservationEventPublisher eventPublisher;
+    private final MeterRegistry meterRegistry;
 
     // Injection optionnelle : null si profil "postgres" inactif (JPA exclu par défaut)
     @Autowired(required = false)
     private ReservationRepository reservationRepository;
 
-    public TrainService(ReservationEventPublisher eventPublisher) {
+    public TrainService(ReservationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
         this.eventPublisher = eventPublisher;
+        this.meterRegistry = meterRegistry;
     }
 
     // Simule une base de données en mémoire pour les trains (pas de table trains en DB pour l'instant)
@@ -107,6 +110,11 @@ public class TrainService {
             reservations.put(reservationId, response);
             log.debug("Réservation {} stockée en mémoire (profil default)", reservationId);
         }
+
+        // 🎯 Micrometer counter — incrémenté à chaque réservation créée
+        // Tag "train_id" : permet de filtrer par train dans Grafana/Prometheus
+        // Visible sur : GET /actuator/prometheus → reservations_created_total{train_id="TGV-7042"}
+        meterRegistry.counter("reservations.created", "train_id", train.id()).increment();
 
         // Publier l'événement Kafka (sync — attend l'ack du broker)
         eventPublisher.publish(ReservationEvent.builder()

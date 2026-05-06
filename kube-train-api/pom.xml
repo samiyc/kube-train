@@ -64,6 +64,19 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-jpa</artifactId>
 		</dependency>
+		<!--
+			Micrometer + Prometheus (J4 — Les 3 piliers de l'observabilité)
+			🎯 Micrometer = facade de métriques (comme SLF4J pour les logs)
+			   → API vendor-neutral : Counter, Gauge, Timer, DistributionSummary
+			   → micrometer-registry-prometheus = exporter spécifique Prometheus
+			   → Expose /actuator/prometheus en format texte Prometheus
+			   → En prod : Prometheus scrape ce endpoint, Grafana visualise
+		-->
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-registry-prometheus</artifactId>
+		</dependency>
+
 		<!-- Driver PostgreSQL (runtime : utilisé uniquement lors de l'exécution, pas à la compilation) -->
 		<dependency>
 			<groupId>org.postgresql</groupId>

@@ -1,6 +1,6 @@
 package com.kubetrain.notification;
 
-import lombok.RequiredArgsConstructor;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -34,13 +34,18 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class ReservationEventConsumer {
 
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
 
     // Cache des eventId déjà traités (démo seulement — en prod, utiliser Redis/BDD)
     private final Set<String> processedEventIds = ConcurrentHashMap.newKeySet();
+
+    public ReservationEventConsumer(ObjectMapper objectMapper, MeterRegistry meterRegistry) {
+        this.objectMapper = objectMapper;
+        this.meterRegistry = meterRegistry;
+    }
 
     @KafkaListener(topics = "train-reservations", groupId = "notification-group")
     public void handleReservation(String payload) {
@@ -63,6 +68,10 @@ public class ReservationEventConsumer {
         log.info("[CONSUMER] Email envoyé (simulé) à {} pour la réservation {}",
                 event.passengerName(),
                 event.reservationId());
+
+        // 🎯 Micrometer counter — événements de notification traités avec succès
+        // Tag "train_id" pour filtrer par train dans Grafana
+        meterRegistry.counter("notifications.processed", "train_id", event.trainId()).increment();
     }
 
     /**

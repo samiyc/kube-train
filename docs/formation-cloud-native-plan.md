@@ -244,20 +244,20 @@
 │    4. deploy → GKE                                         │
 └────────────────────────────────────────────────────────────┘
 
-┌─ GKE Autopilot ───────────────────────────────────────────┐
+┌─ GKE Autopilot ────────────────────────────────────────────┐
 │                                                            │
-│  ┌─ kube-train-api ──┐    ┌─ Kafka / Pub/Sub ┐            │
-│  │  GET /             │    │                   │            │
-│  │  GET /reserver ────┼──>│  train-reservations│            │
-│  │  GET /secure       │    │                   │            │
-│  │  /actuator/health  │    └───────┬───────────┘            │
-│  │  /actuator/prometheus│          │                        │
-│  │  /swagger-ui.html  │           │                        │
-│  └────────────────────┘           ▼                        │
-│                          ┌─ notification-service ─┐        │
-│                          │  Consomme les events    │        │
-│                          │  Log / Envoie notif     │        │
-│                          └─────────────────────────┘        │
+│  ┌─ kube-train-api ──────┐    ┌─ Kafka / Pub/Sub ───┐      │
+│  │  GET /                │    │                     │      │
+│  │  GET /reserver ───────┼──> │  train-reservations │      │
+│  │  GET /secure          │    │                     │      │
+│  │  /actuator/health     │    └───────┬─────────────┘      │
+│  │  /actuator/prometheus │            │                    │
+│  │  /swagger-ui.html     │            │                    │
+│  └───────────────────────┘            ▼                    │
+│                             ┌─ notification-service ─┐     │
+│                             │  Consomme les events   │     │
+│                             │  Log / Envoie notif    │     │
+│                             └────────────────────────┘     │
 │                                                            │
 │  Cloud SQL Postgres ◄── kube-train-api                     │
 │  Secret Manager ──► inject API_KEY                         │

@@ -2,11 +2,15 @@ package com.kubetrain.api.controller;
 
 import com.kubetrain.api.config.EventPublisherConfig;
 import com.kubetrain.api.service.TrainService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -29,8 +33,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *  - @DisplayName pour des noms lisibles dans le rapport
  */
 @WebMvcTest(TrainController.class)
-@Import({TrainService.class, EventPublisherConfig.class})
+@Import({TrainService.class, EventPublisherConfig.class, TrainControllerTest.MetricsTestConfig.class})
 class TrainControllerTest {
+
+    // @WebMvcTest ne charge pas Micrometer → on fournit un SimpleMeterRegistry minimal
+    @TestConfiguration
+    static class MetricsTestConfig {
+        @Bean
+        MeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
+        }
+    }
 
     @Autowired
     private MockMvc mockMvc;
