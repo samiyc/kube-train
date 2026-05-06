@@ -405,3 +405,194 @@ curl -v https://api.X.X.X.X.nip.io/ 2>&1 | grep issuer  # vérifier Let's Encryp
 ```
 
 **nip.io** : service DNS public gratuit. `api.1.2.3.4.nip.io` résout toujours vers `1.2.3.4`. Pas d'inscription, fonctionne immédiatement. Idéal pour les formations/démos sans domaine.
+
+---
+
+### Cloud SQL + Spring Data JPA + Auth Proxy
+
+**Architecture de connexion sur GKE Autopilot** :
+```
+Pod
+ ├─ api-container (Spring Boot)
+ │    └─ JDBC → 127.0.0.1:5432
+ └─ cloud-sql-proxy (sidecar)
+      └─ tunnel chiffré → Cloud SQL instance (Cloud SQL Auth Proxy v2)
+```
+Le sidecar crée un tunnel IAM-authentifié → **pas d'IP publique exposée, pas de mot de passe réseau**.
+
+**Workload Identity (obligatoire sur GKE Autopilot)** :
+- Les pods GKE Autopilot n'héritent PAS du SA du nœud → le proxy obtient 403 sans Workload Identity
+- Deux étapes requises :
+```bash
+# 1. Liaison IAM (niveau GCP)
+gcloud iam service-accounts add-iam-policy-binding SA_COMPUTE \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:PROJECT.svc.id.goog[default/default]"
+
+# 2. Annotation K8s (niveau cluster)
+kubectl annotate serviceaccount default \
+  iam.gke.io/gcp-service-account=SA_COMPUTE
+```
+
+**Profil Spring — stratégie dual-storage** :
+```
+Profil "default" (local, tests) : ReservationRepository == null → ConcurrentHashMap
+Profil "postgres" (GKE)          : ReservationRepository injecté → Cloud SQL
+```
+```java
+@Autowired(required = false)  // null si le bean n'existe pas (pas de DataSource)
+private ReservationRepository reservationRepository;
+```
+
+**Spring Boot 4 — noms d'autoconfiguration (renommés depuis Boot 3)** :
+```properties
+# Dans spring.autoconfigure.exclude :
+org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration
+org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration
+org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration
+```
+⚠️ Les noms Spring Boot 3.x (`org.springframework.boot.autoconfigure.jdbc.*`) ne fonctionnent **pas** en Boot 4.
+
+**HikariCP — timing avec le sidecar proxy** :
+```properties
+# Évite que HikariPool expire avant que le proxy soit prêt
+spring.datasource.hikari.initialization-fail-timeout=-1
+spring.flyway.connect-retries=10
+spring.flyway.connect-retries-interval=5
+```
+
+**Piège mot de passe** : `gcloud sql users create` et `gcloud secrets create` sont deux opérations séparées.
+Si faits à des moments différents avec des valeurs différentes → `FATAL: password authentication failed`.
+Resync : `PASS=$(gcloud secrets versions access latest --secret=db-password); gcloud sql users set-password user --password="$PASS"`
+
+**Proxy distroless** : l'image `gcr.io/cloud-sql-connectors/cloud-sql-proxy:2` n'a pas de shell.
+`kubectl exec -c cloud-sql-proxy /bin/sh` → échec. Utiliser `-c api-container` ou Cloud Shell.
+
+---
+
+### Cloud Logging — Logs structurés JSON
+
+**Activation sur GKE** (sans impact local) :
+```yaml
+# deployment-gke.yaml
+- name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+  value: "ecs"
+```
+Format **ECS (Elastic Common Schema)** → Cloud Logging parse `log.level` comme severity.
+Logs locaux restent en texte lisible (la variable n'est pas définie hors GKE).
+
+**Structure d'un log ECS** :
+```json
+{
+  "@timestamp": "2026-05-05T14:07:37.102Z",
+  "log": { "level": "INFO", "logger": "com.kubetrain.api.controller.TrainController" },
+  "service": { "name": "kube-train-api", "version": "0.0.1-SNAPSHOT" },
+  "message": "POST /reservations — passager=Jean Dupont, train=TGV-7042"
+}
+```
+→ Severity colorée dans Cloud Logging : 🟢 INFO, 🟡 WARN, 🔴 ERROR
+
+**Requêtes LQL utiles** :
+```
+# Logs applicatifs seulement (filtre le bruit K8s/Hibernate)
+resource.type="k8s_container"
+resource.labels.container_name="api-container"
+jsonPayload.log.logger=~"com.kubetrain"
+
+# Tracer une réservation spécifique
+resource.type="k8s_container"
+jsonPayload.message=~"RES-B313EF9C"
+```
+→ En production : taper l'ID de transaction d'un client → reconstituer tout le flux en 2 secondes.
+
+---
+
+### Cloud Monitoring — Log-based Metrics & Alertes
+
+**Log-based Metric** : transformer un pattern de log en métrique Cloud Monitoring.
+```
+Log filter: jsonPayload.message=~"persistée en Cloud SQL"
+Metric type: Compteur → exposée comme logging/user/reservations_created (/s)
+```
+→ Toute métrique Log-based est utilisable dans les alertes, dashboards, SLOs.
+
+**Unités** : Cloud Monitoring exprime les compteurs en **taux `/s`**.
+Conversion : 10 réservations/min = 10 ÷ 60 = **0.167 /s**
+
+**Types de condition d'alerte** :
+
+| Type | Quand utiliser |
+|------|---------------|
+| **Threshold** | Déclenche si la valeur dépasse un seuil pendant N minutes |
+| **Metric absence** | Déclenche si aucune donnée n'arrive pendant N minutes |
+| **Forecast** | Déclenche si la tendance projette un dépassement futur |
+
+**"Fenêtre du nouveau test"** : durée pendant laquelle le seuil doit être dépassé **en continu** avant de déclencher. Évite les faux positifs sur des pics courts. En prod : 5-15 min.
+
+**Runbook dans la Documentation de l'alerte** : toujours documenter les étapes de diagnostic
+en Markdown (liens kubectl, Cloud Logging, dashboards). L'équipe d'astreinte les voit directement dans l'email d'alerte.
+
+---
+
+### SLI / SLO / Error Budget
+
+**Définitions** :
+```
+SLI (Indicator) = mesure brute
+  → "95.3% des requêtes sont OK"
+
+SLO (Objective) = cible interne de l'équipe engineering
+  → "99.9% des requêtes OK sur 30 jours glissants"
+
+SLA (Agreement) = contrat avec les clients
+  → "On garantit 99.5%" (toujours < SLO pour garder une marge)
+  → violation = pénalités financières
+
+Error Budget = tolérance autorisée = 100% - SLO
+  → SLO 99.9% sur 30 jours = 0.1% × 43 200 min = 43 min de downtime/mois
+```
+
+**"Three nines" courants** :
+
+| SLO | Downtime/mois | Contexte typique |
+|-----|--------------|-----------------|
+| 99% | 7h 12min | Batch, outils internes |
+| 99.9% | 43 min | API e-commerce |
+| 99.95% | 21 min | Paiement, santé |
+| 99.99% | 4 min | Très difficile avec des déploiements fréquents |
+
+**Error Budget et freeze des déploiements** :
+```
+Budget consommé à 80% → alerte → ralentir les déploiements risqués
+Budget épuisé (100%)  → freeze des features → focus fiabilité uniquement
+Nouveau mois          → budget reset (si calendarPeriod) ou fenêtre glissante
+```
+
+**Question entretien type** :
+> *"Vous avez une feature urgente mais votre error budget est à 20%. Que faites-vous ?"*
+> → "On ne déploie pas. L'error budget est épuisé, on focalise sur la fiabilité. La feature attend."
+
+**SLI à fenêtres (window-based)** :
+Cloud Monitoring découpe la période en fenêtres de durée fixe (ex: 5 min).
+Chaque fenêtre est évaluée "good" ou "bad" → `SLI = fenêtres good / fenêtres totales`.
+
+**JSON d'un SLO Cloud Monitoring** :
+```json
+{
+  "goal": 0.999,
+  "calendarPeriod": "MONTH",
+  "serviceLevelIndicator": {
+    "windowsBased": {
+      "windowPeriod": "300s",
+      "metricMeanInRange": {
+        "timeSeries": "metric.type=\"kubernetes.io/container/uptime\"",
+        "range": { "min": 0, "max": 9007199254740991 }
+      }
+    }
+  }
+}
+```
+`calendarPeriod: MONTH` = reset le 1er du mois.
+`rollingPeriod: "2592000s"` (30 jours) = fenêtre glissante, plus courant en prod.
+
