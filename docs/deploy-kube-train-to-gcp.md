@@ -393,4 +393,7 @@ helm install monitoring prometheus-community/kube-prometheus-stack
 # Accéder à Grafana
 kubectl port-forward svc/monitoring-grafana 3000:80
 # → http://localhost:3000  (admin/prom-operator)
+
+# Récupération du MDP sur wsl
+kubectl get secret monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d && echo
 ```

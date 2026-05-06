@@ -772,3 +772,192 @@ kube-train utilise du **CI/CD push-based** (GitHub Actions). GitOps est la proch
 
 > **Phrase clé entretien** : *"Pour l'instant j'utilise GitHub Actions (push-based). La prochaine évolution serait ArgoCD pour du GitOps pull-based : drift detection automatique et rollback via simple `git revert`."*
 
+---
+
+## 📝 J4 Après-midi — Notes de révision : Les 3 piliers de l'observabilité & Datadog
+
+### Les 3 piliers de l'observabilité
+
+> *"Sans observabilité, un système en prod est une boîte noire."*
+
+| Pilier | Question à laquelle il répond | Outil kube-train |
+|--------|-------------------------------|------------------|
+| **Logs** | Qu'est-ce qui s'est passé ? | Cloud Logging / Fluent Bit |
+| **Métriques** | Combien ? Quelle tendance ? | Micrometer + Prometheus |
+| **Traces** | Pourquoi c'est lent / cassé ? | OpenTelemetry (à implémenter) |
+
+---
+
+### Pilier 1 — Logs ✅ (implémenté en J3)
+
+```
+kube-train-api  →  stdout ECS JSON  →  Fluent Bit  →  Cloud Logging
+```
+
+LQL utile : `jsonPayload.message=~"RES-89F25868"` → tout le cycle de vie d'une réservation en 3 lignes.
+
+---
+
+### Pilier 2 — Métriques ✅ (implémenté en J4)
+
+#### Micrometer = SLF4J des métriques
+
+```
+SLF4J      → abstraction → Logback / Log4j
+Micrometer → abstraction → Prometheus / Datadog / CloudWatch / ...
+```
+
+Changer de backend = changer le registry dans `pom.xml`. Le code applicatif ne change pas.
+
+#### Métriques implémentées dans kube-train
+
+```java
+// TrainService.java
+meterRegistry.counter("reservations.created", "train_id", train.id()).increment();
+
+// ReservationEventConsumer.java
+meterRegistry.counter("notifications.processed", "train_id", event.trainId()).increment();
+```
+
+#### Contenu de `/actuator/prometheus`
+
+```
+# TYPE reservations_created_total counter
+reservations_created_total{train_id="TGV-7042"} 14.0
+reservations_created_total{train_id="TER-2814"} 3.0
+
+# TYPE jvm_memory_used_bytes gauge
+jvm_memory_used_bytes{area="heap"} 1.23456789E8
+
+# TYPE http_server_requests_seconds summary
+http_server_requests_seconds_count{method="GET",status="200",uri="/trains"} 47.0
+```
+
+Spring Boot ajoute automatiquement des métriques JVM, HTTP, BDD et Kafka — des dizaines de métriques sans écrire une ligne de code.
+
+#### Tags = dimensions d'analyse
+
+```java
+// ❌ Sans tag — total uniquement, pas filtrable
+meterRegistry.counter("reservations.created").increment();
+
+// ✅ Avec tag — filtrable par train dans Grafana/Prometheus
+meterRegistry.counter("reservations.created", "train_id", train.id()).increment();
+// → reservations_created_total{train_id="TGV-7042"} 14.0
+// → reservations_created_total{train_id="TER-2814"} 3.0
+```
+
+#### Prometheus + Grafana sur Minikube
+
+Prometheus doit être configuré pour **scraper** l'app via un `ServiceMonitor` (CRD fourni par le chart `kube-prometheus-stack`) :
+
+```yaml
+# k8s/servicemonitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kube-train-monitor
+  labels:
+    release: monitoring   # doit matcher le label du chart Prometheus
+spec:
+  selector:
+    matchLabels:
+      app: kube-train      # sélectionne le Service de l'app
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 15s
+```
+
+Sans `ServiceMonitor`, Grafana Explore liste les métriques système K8s mais pas les métriques de l'app. Le `ServiceMonitor` est le "câble" qui branche Prometheus sur `/actuator/prometheus`.
+
+---
+
+### Pilier 3 — Traces distribuées (théorie)
+
+Les logs disent **quoi**, les métriques disent **combien**, les traces disent **pourquoi c'est lent**.
+
+#### Le problème sans tracing
+
+```
+Client → kube-train-api (50ms) → Kafka → notification-service (200ms)
+                                                    ↑
+                               Pourquoi 200ms ici ? Impossible à savoir sans trace
+```
+
+#### OpenTelemetry (OTel)
+
+Standard CNCF unifiant traces, métriques et logs. Une **trace** = l'arbre complet d'une requête à travers tous les services :
+
+```
+Trace: POST /reservations  [total: 47ms]
+  ├─ Span: TrainController.createReservation     [2ms]
+  ├─ Span: TrainService.save                     [12ms]
+  │    └─ Span: SQL INSERT reservations          [11ms]  ← goulot d'étranglement
+  └─ Span: KafkaProducer.send                    [31ms]  ← latence Kafka
+```
+
+Chaque requête reçoit un **Trace ID** propagé dans les headers HTTP et messages Kafka :
+```
+X-Trace-Id: 4bf92f3577b34da6a3ce929d0e0e4736
+```
+
+#### Pour kube-train (si on l'ajoutait)
+
+```xml
+<!-- pom.xml — Spring Boot auto-configure le tracing -->
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-tracing-bridge-otel</artifactId>
+</dependency>
+```
+
+Les Trace IDs apparaissent automatiquement dans les logs JSON, permettant de corréler un log avec sa trace complète.
+
+---
+
+### Datadog — Vue d'ensemble (sans install, payant)
+
+Datadog est la plateforme d'observabilité la plus répandue en entreprise. Ses 6 modules :
+
+| Module | Rôle | Analogie kube-train |
+|--------|------|---------------------|
+| **APM** | Traces distribuées + profiling code | Voir que le `SQL INSERT` prend 11ms |
+| **Infrastructure** | CPU, RAM, réseau des pods/nodes | Voir que GKE Autopilot scale à 3 nodes |
+| **Log Management** | Agrégation + parsing + alertes | Remplace Cloud Logging |
+| **Synthetics** | Tests de disponibilité planifiés | Appel `GET /` toutes les 5 min depuis Paris |
+| **RUM** | Real User Monitoring (frontend) | Temps de chargement du Swagger UI |
+| **Dashboards & Monitors** | Visualisation + alertes | Remplace Cloud Monitoring |
+
+#### APM — le plus demandé en entretien
+
+```
+Sans APM : "L'API est lente" → on ne sait pas pourquoi
+Avec APM : "Le SQL SELECT trains prend 340ms à cause d'un index manquant sur train_id"
+```
+
+L'agent Datadog s'installe comme **sidecar** dans le pod (même pattern que le Cloud SQL Auth Proxy) :
+
+```yaml
+containers:
+  - name: api-container
+    env:
+      - name: DD_AGENT_HOST
+        valueFrom:
+          fieldRef:
+            fieldPath: status.hostIP
+```
+
+#### Synthetics — monitoring externe
+
+Datadog envoie des requêtes réelles depuis ses data centers dans le monde. Si `/actuator/health` répond > 2s depuis Tokyo → alerte. C'est un monitoring **externe** (différent des probes K8s qui sont internes au cluster).
+
+---
+
+### Récap — Le discours observabilité en entretien
+
+> *"Dans kube-train, j'ai mis en place les 3 piliers de l'observabilité :*
+> - *Logs : stdout JSON format ECS, collectés par Fluent Bit vers Cloud Logging. LQL queries pour tracer une réservation de bout en bout par son ID.*
+> - *Métriques : Micrometer avec registry Prometheus, counters custom `reservations.created` par train_id, endpoint `/actuator/prometheus` exposé. Spring Boot ajoute automatiquement JVM, HTTP et BDD metrics.*
+> - *Traces : pas encore implémenté — l'étape naturelle serait `micrometer-tracing-bridge-otel` pour propager les Trace IDs entre l'API et le notification-service via Kafka."*
+
