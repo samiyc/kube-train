@@ -83,7 +83,7 @@ kubectl apply -f configmap.yaml && kubectl apply -f deployment-gke.yaml && kubec
 
 #### Configuration k8S sur GCP
 ```
-cd /mnt/c/DEVDIR/GITHUB/kube-train/cours/
+cd /mnt/c/DEVDIR/GITHUB/kube-train/k8s/
 kubectl apply -f configmap.yaml
 openssl rand -base64 32           # Generation clef RND => API_KEY. ' kub..' => No history
  kubectl create secret generic kube-train-secrets --from-literal=API_KEY=<clef générée>
@@ -251,7 +251,7 @@ kubectl logs -n cert-manager -l app.kubernetes.io/component=cainjector --tail=5
 
 # 7. Appliquer le ClusterIssuer Let's Encrypt (email jamais commité)
 sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|ton-email@gmail.com|g" \
-    cours/cluster-issuer.yaml | kubectl apply -f -
+    k8s/cluster-issuer.yaml | kubectl apply -f -
 
 # Vérifier (READY=True + ACMEAccountRegistered = OK)
 kubectl get clusterissuer letsencrypt-prod
@@ -361,9 +361,26 @@ kubectl exec -it deployment/kube-train-deployment -c api-container -- /bin/sh
 ```
 #### Cloud Logging / Monitoring
 ```
-# Astuce : Restart du pod et check des logs
+# Astuce : Restart du pod et check des logs de l'app
 kubectl rollout restart deployment/kube-train-deployment
 kubectl rollout status deployment/kube-train-deployment
 kubectl logs -f deployment/kube-train-deployment -c api-container
 
+# Cloud Logging. Requêtes LQL utiles:
+-- Uniquement tes logs applicatifs
+resource.type="k8s_container"
+resource.labels.container_name="api-container"
+severity=INFO
+
+-- Tes logs custom uniquement
+resource.type="k8s_container"
+resource.labels.container_name="api-container"
+jsonPayload.log.logger=~"com.kubetrain"
+
+-- Filtrer une réservation spécifique
+resource.type="k8s_container"
+jsonPayload.message=~"RES-89F25868"
+
+-- Filtre simple
+severity="ERROR" OR severity="WARNING"
 ```

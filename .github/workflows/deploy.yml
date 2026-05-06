@@ -98,10 +98,10 @@ jobs:
         run: |
           # Injecter le tag git SHA dans le manifest avant d'appliquer (évite un double rollout)
           sed "s|IMAGE_TAG_PLACEHOLDER|${{ env.IMAGE }}:${{ github.sha }}|g" \
-            cours/deployment-gke.yaml | kubectl apply -f -
-          kubectl apply -f cours/configmap.yaml
-          kubectl apply -f cours/service.yaml
-          kubectl apply -f cours/hpa.yaml
+            k8s/deployment-gke.yaml | kubectl apply -f -
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/hpa.yaml
 
       - name: Vérifier le déploiement
         run: kubectl rollout status deployment/kube-train-deployment --timeout=5m
@@ -111,7 +111,7 @@ jobs:
       # Prérequis (setup manuel unique) : nginx-ingress, cert-manager, ClusterIssuer letsencrypt-prod
       #   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.3/deploy/static/provider/cloud/deploy.yaml
       #   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
-      #   sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|email@example.com|g" cours/cluster-issuer.yaml | kubectl apply --validate=false -f -
+      #   sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|email@example.com|g" k8s/cluster-issuer.yaml | kubectl apply --validate=false -f -
       # puis applique l'Ingress GKE avec TLS activé.
       - name: Déployer l'Ingress HTTPS (nip.io)
         run: |
@@ -121,4 +121,4 @@ jobs:
           echo "Ingress IP  : $INGRESS_IP"
           echo "Host nip.io : api.${INGRESS_IP}.nip.io"
           sed "s|NIP_IO_HOST_PLACEHOLDER|api.${INGRESS_IP}.nip.io|g" \
-            cours/ingress-gke.yaml | kubectl apply -f -
+            k8s/ingress-gke.yaml | kubectl apply -f -
