@@ -384,3 +384,13 @@ jsonPayload.message=~"RES-89F25868"
 -- Filtre simple
 severity="ERROR" OR severity="WARNING"
 ```
+#### Monitoring Grafana
+```
+# Installer Prometheus + Grafana via Helm
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm install monitoring prometheus-community/kube-prometheus-stack
+
+# Accéder à Grafana
+kubectl port-forward svc/monitoring-grafana 3000:80
+# → http://localhost:3000  (admin/prom-operator)
+```

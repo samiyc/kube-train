@@ -500,6 +500,11 @@ resource.type="k8s_container"
 resource.labels.container_name="api-container"
 jsonPayload.log.logger=~"com.kubetrain"
 
+# Erreur 500
+resource.type="k8s_container"
+resource.labels.container_name="api-container"
+jsonPayload.message=~"Erreur interne"
+
 # Tracer une réservation spécifique
 resource.type="k8s_container"
 jsonPayload.message=~"RES-B313EF9C"
@@ -595,4 +600,175 @@ Chaque fenêtre est évaluée "good" ou "bad" → `SLI = fenêtres good / fenêt
 ```
 `calendarPeriod: MONTH` = reset le 1er du mois.
 `rollingPeriod: "2592000s"` (30 jours) = fenêtre glissante, plus courant en prod.
+
+---
+
+## 📝 J4 Matin — Notes de révision : 12 Factors, Conteneurs immuables, GitOps
+
+### Les 12 Factors appliqués à kube-train
+
+Les 12 Factors (https://12factor.net) sont le **manifeste de l'app cloud-native**, écrit par les créateurs de Heroku en 2011. Connaître ces principes par cœur est un signal fort en entretien.
+
+#### Factor 1 — Codebase ✅
+> *"Un seul repo, plusieurs déploiements"*
+
+Un seul repo Git (`samiyc/kube-train`), le même code tourne en local (Minikube) et sur GKE. Ce qui change entre les environnements, c'est la **config**, jamais le code.
+
+#### Factor 2 — Dependencies ✅
+> *"Déclarer et isoler explicitement les dépendances"*
+
+`pom.xml` déclare tout (Spring, Kafka, Micrometer…). L'image Docker embarque exactement ce qui est déclaré, rien de plus. Jamais de `apt install` dans un Dockerfile.
+
+#### Factor 3 — Config ✅
+> *"Stocker la config dans l'environnement, jamais dans le code"*
+
+Règle de test : **si le repo est rendu public, aucun secret ne doit fuiter**.
+
+| Config | Mécanisme kube-train |
+|--------|----------------------|
+| API_KEY | GCP Secret Manager → K8s Secret → env var |
+| DB_URL | ConfigMap → env var |
+| Kafka URL | env var `KAFKA_BOOTSTRAP_SERVERS` |
+| Message d'accueil | ConfigMap `TRAIN_MESSAGE` |
+
+```java
+@Value("${train.message:Bienvenue}") // valeur par défaut si absent
+private String message;
+```
+
+#### Factor 4 — Backing Services ✅
+> *"Traiter BDD, Kafka, cache comme des ressources attachées"*
+
+Une **backing service** = tout ce que l'app consomme via le réseau. On doit pouvoir **swapper** la ressource sans changer le code, juste la config :
+
+```yaml
+# Changer de BDD = changer une env var, pas du code
+env:
+  - name: SPRING_DATASOURCE_URL
+    value: "jdbc:postgresql://cloud-sql-proxy:5432/kube_train"
+```
+
+kube-train illustre ça parfaitement : même code, Cloud SQL en prod, H2 en test.
+
+#### Factor 5 — Build / Release / Run ✅
+> *"Séparer strictement les phases build, release, run"*
+
+```
+BUILD   : mvn package → kube-train-api.jar       (code compilé)
+RELEASE : docker build → image:abc123f            (code + config figée)
+RUN     : kubectl apply → Pod                     (release en exécution)
+```
+
+Le pipeline GitHub Actions implémente exactement ces trois phases. Point clé entretien : *"On ne patche jamais une image en prod. Un fix = nouvelle image via la pipeline."*
+
+#### Factor 6 — Processes ⚠️ Dette technique identifiée
+> *"Exécuter l'app comme des processus stateless"*
+
+```java
+// TrainService.java — profil "default" (local seulement)
+private final Map<String, ReservationResponse> reservations = new ConcurrentHashMap<>();
+// ⚠️ Si 2 pods tournent, chaque pod a sa propre Map → incohérence de données !
+```
+
+**En prod (GKE, profil `postgres`)** : ✅ stateless, tout est en Cloud SQL.  
+**En local (profil `default`)** : ⚠️ stateful — acceptable pour le dev, interdit en prod.
+
+> **Réponse entretien** : *"J'ai identifié cette dette. Elle est isolée au profil default. En prod on utilise Cloud SQL. La correction serait Redis ou une BDD partagée si on voulait du stateful en multi-pod."*
+
+#### Factor 7 — Port Binding ✅
+> *"L'app expose un service via un port, elle ne dépend pas d'un serveur externe"*
+
+Spring Boot **embarque** Tomcat — il ne se déploie pas dans un Tomcat externe. L'app est autonome :
+```
+kube-train-api :8080 → Service K8s :80 → Ingress :443
+```
+
+#### Factor 8 — Concurrency ✅
+> *"Scaler horizontalement, pas verticalement"*
+
+```yaml
+replicas: 2  # 2 instances identiques, K8s load-balance automatiquement
+```
+```bash
+kubectl scale deployment kube-train-deployment --replicas=5  # scale instantané
+```
+C'est pourquoi le Factor 6 (stateless) est critique : sans stateless, le scaling horizontal crée des incohérences.
+
+#### Factor 9 — Disposability ✅
+> *"Démarrage rapide, arrêt propre"*
+
+Les trois probes dans `deployment-gke.yaml` implémentent ce principe :
+- `startupProbe` : attend que Spring ait démarré (~38s sur GKE Autopilot)
+- `livenessProbe` : redémarre le pod si bloqué
+- `readinessProbe` : retire du load-balancer si pas prêt à servir
+
+Spring Boot gère le **graceful shutdown** automatiquement depuis Boot 2.3 : il finit les requêtes en cours avant de s'arrêter.
+
+#### Factor 10 — Dev/Prod Parity ✅
+> *"Garder dev, staging, prod aussi similaires que possible"*
+
+| | Local | GKE |
+|-|-------|-----|
+| Image Docker | ✅ même Dockerfile | ✅ même Dockerfile |
+| Config | profil `default` | profil `postgres` + env vars |
+| Différence assumée | `imagePullPolicy: Never` | `imagePullPolicy: Always` |
+
+Le seul vrai écart (BDD in-memory vs Cloud SQL) est documenté et limité au profil `default`.
+
+#### Factor 11 — Logs ✅
+> *"Traiter les logs comme des flux d'événements (stdout)"*
+
+```java
+log.info("Réservation {} persistée en Cloud SQL", reservation.getReservationId());
+// → stdout → Fluent Bit (GKE) → Cloud Logging  (automatique)
+```
+
+L'app **ne sait pas** où vont ses logs. Elle écrit sur stdout, l'infrastructure collecte. Mis en place en J3 avec `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`.
+
+#### Factor 12 — Admin Processes
+> *"Exécuter les tâches admin comme des one-off processes"*
+
+```bash
+# ❌ Anti-pattern : SSH dans le pod pour lancer un script
+kubectl exec -it pod -- bash -c "psql ... < migration.sql"
+
+# ✅ 12-Factor : un Job Kubernetes one-shot
+kubectl run migration --image=kube-train-api:v5 --restart=Never -- java -jar app.jar --migrate
+```
+
+Flyway (migration J5) implémente ce principe : la migration s'exécute au démarrage, de façon traçable et reproductible.
+
+---
+
+### Conteneurs immuables
+
+> **On ne modifie jamais un conteneur qui tourne. On crée une nouvelle image.**
+
+```
+❌ kubectl exec pod -- sed -i 's/old/new/' config.yaml  # interdit
+✅ Modifier → commit → pipeline → nouvelle image → rolling update
+```
+
+Implications concrètes :
+- Toute la config vient de l'**extérieur** (env vars, ConfigMap, Secret) — jamais baked dans l'image
+- L'image est taguée par git SHA → auditabilité totale (qui a déployé quoi, quand)
+- Rollback = revenir à l'image précédente (`kubectl rollout undo deployment/kube-train-deployment`)
+
+---
+
+### GitOps (théorie)
+
+kube-train utilise du **CI/CD push-based** (GitHub Actions). GitOps est la prochaine évolution.
+
+| | GitHub Actions (push-based) | GitOps / ArgoCD (pull-based) |
+|-|----------------------------|------------------------------|
+| Déclencheur | `push main` → pipeline active | Agent surveille le repo en continu |
+| Qui applique | Pipeline `kubectl apply` depuis l'extérieur | Agent **dans** le cluster (pull) |
+| Source de vérité | Code + pipeline YAML | Repo Git **uniquement** |
+| Drift detection | ❌ Non (kubectl manual passe inaperçu) | ✅ Alerte si cluster ≠ Git |
+| Rollback | Re-run pipeline sur ancien commit | `git revert` → sync automatique |
+
+**ArgoCD** : un pod dans le cluster qui surveille le repo Git. Dès qu'un manifest change, il synchronise. Si quelqu'un fait un `kubectl apply` manuellement → ArgoCD détecte le drift et revient à l'état Git.
+
+> **Phrase clé entretien** : *"Pour l'instant j'utilise GitHub Actions (push-based). La prochaine évolution serait ArgoCD pour du GitOps pull-based : drift detection automatique et rollback via simple `git revert`."*
 
