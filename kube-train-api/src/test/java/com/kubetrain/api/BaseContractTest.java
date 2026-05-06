@@ -3,10 +3,14 @@ package com.kubetrain.api;
 import com.kubetrain.api.config.EventPublisherConfig;
 import com.kubetrain.api.controller.TrainController;
 import com.kubetrain.api.service.TrainService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.web.context.WebApplicationContext;
 
@@ -23,8 +27,17 @@ import org.springframework.web.context.WebApplicationContext;
  * RestAssuredMockMvc → librairie qui fait les appels HTTP simulés
  */
 @WebMvcTest(TrainController.class)
-@Import({TrainService.class, EventPublisherConfig.class})
+@Import({TrainService.class, EventPublisherConfig.class, BaseContractTest.MetricsTestConfig.class})
 public abstract class BaseContractTest {
+
+    // @WebMvcTest ne charge pas Micrometer → on fournit un SimpleMeterRegistry minimal
+    @TestConfiguration
+    static class MetricsTestConfig {
+        @Bean
+        MeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
+        }
+    }
 
     @Autowired
     WebApplicationContext context;
