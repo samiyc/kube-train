@@ -6,6 +6,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.net.URI;
 import java.time.Instant;
@@ -35,6 +36,23 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TrainNotFoundException.class)
     public ProblemDetail handleNotFound(TrainNotFoundException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        problem.setTitle("Ressource introuvable");
+        problem.setType(URI.create("https://api.kube-train.local/errors/not-found"));
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
+
+    /**
+     * 404 — Route inconnue (bots, scanners, typos).
+     *
+     * Spring lève NoResourceFoundException quand aucun handler ne correspond à la route.
+     * Sans ce handler, elle remontait dans le catch-all Exception → 500 + log ERROR.
+     * On log en WARN (pas ERROR) : c'est du bruit externe, pas un bug applicatif.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ProblemDetail handleNoResource(NoResourceFoundException ex) {
+        log.warn("[404] Route inconnue : {}", ex.getResourcePath());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, "Route inconnue : " + ex.getResourcePath());
         problem.setTitle("Ressource introuvable");
         problem.setType(URI.create("https://api.kube-train.local/errors/not-found"));
         problem.setProperty("timestamp", Instant.now());
