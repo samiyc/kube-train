@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
       - name: api-container
-        image: kube-train-api:v4  # 👈 Passage en V4
+        image: kube-train-api:v5  # 👈 Changer la version de l'image ici
         imagePullPolicy: Never
         ports:
         - containerPort: 8080

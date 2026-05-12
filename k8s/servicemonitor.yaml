@@ -1,0 +1,31 @@
+# ServiceMonitor — Minikube (Prometheus Operator / kube-prometheus-stack)
+#
+# Ce CRD (Custom Resource Definition) dit à Prometheus :
+#   "Scrappe l'endpoint /actuator/prometheus de kube-train-service toutes les 15s"
+#
+# Prérequis :
+#   helm install monitoring prometheus-community/kube-prometheus-stack
+#
+# Apply :
+#   kubectl apply -f k8s/servicemonitor.yaml
+#
+# Vérification :
+#   kubectl get servicemonitor
+#   kubectl port-forward svc/monitoring-prometheus-prometheus 9090:9090
+#   → http://localhost:9090/targets  (kube-train doit apparaître "UP")
+#
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kube-train-monitor
+  namespace: default
+  labels:
+    release: monitoring   # doit matcher le label de sélection du chart kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: kube-train-pod   # cible le Service qui sélectionne les pods kube-train
+  endpoints:
+    - port: http            # nom du port déclaré dans service.yaml (à ajouter — voir ci-dessous)
+      path: /actuator/prometheus
+      interval: 15s

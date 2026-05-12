@@ -99,6 +99,25 @@ kubectl get service kube-train-service   # Affiche l'ip public
 curl http://<EXTERNAL-IP>/
  curl -H "X-API-KEY: <API_KEY>" http://<EXTERNAL-IP>/secure    # ' ' => bash Histo
 ```
+#### Update de l'image k8s en local
+```
+# Dans powershell / window / Java 21
+mvn clean package
+
+# Dans WSL
+minikube start --driver=docker
+eval $(minikube docker-env)
+cd /mnt/c/DEVDIR/GITHUB/kube-train/
+docker build -t kube-train-api:v5 ./kube-train-api
+
+# Verification des images
+docker image ls | grep kube-train-api
+
+# Apply service mis à jour (port nommé) + ServiceMonitor
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/servicemonitor.yaml
+kubectl apply -f k8s/deployment.yaml  # si besoin de passer en v5
+```
 #### K8s context
 ```
 # liste les cluster disponible
@@ -396,4 +415,38 @@ kubectl port-forward svc/monitoring-grafana 3000:80
 
 # Récupération du MDP sur wsl
 kubectl get secret monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d && echo
+```
+
+#### Mise en place de prometheus (custom trackers)
+construction de l'image `monitoring.coreos.com/v1` manquante
+```
+# 1. Ajouter le repo Helm Prometheus
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
+# 2. Installer Prometheus + Grafana + les CRDs (ça télécharge plusieurs images, ~2-3 min)
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  --set grafana.adminPassword=admin \
+  --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
+  --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
+
+# 3. Attendre que tous les pods 'monitoring-xx..' soient Running
+kubectl get pods -w
+
+# 4. Appliquer le ServiceMonitor (maintenant que le CRD existe)
+kubectl apply -f k8s/servicemonitor.yaml
+
+# Verif. Doit lister kube-train-monitor
+kubectl get servicemonitor
+
+---
+
+# Prometheus => http://localhost:9090/targets  (kube-train doit être UP)
+kubectl port-forward svc/monitoring-kube-prometheus-prometheus 9090:9090
+
+# App => http://localhost:8080/swagger-ui/index.html
+kubectl port-forward service/kube-train-service 8080:80
+
+# Grafana => http://localhost:3000/
+kubectl port-forward svc/monitoring-grafana 3000:80
 ```
