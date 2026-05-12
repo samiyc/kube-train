@@ -416,7 +416,6 @@ kubectl port-forward svc/monitoring-grafana 3000:80
 # Récupération du MDP sur wsl
 kubectl get secret monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d && echo
 ```
-
 #### Mise en place de prometheus (custom trackers)
 construction de l'image `monitoring.coreos.com/v1` manquante
 ```
@@ -449,4 +448,41 @@ kubectl port-forward service/kube-train-service 8080:80
 
 # Grafana => http://localhost:3000/
 kubectl port-forward svc/monitoring-grafana 3000:80
+```
+#### Setup Pub/Sub pour GKE
+```
+# Créer le topic
+gcloud pubsub topics create train-reservations
+
+# Topic DLQ
+gcloud pubsub topics create train-reservations-dlq
+
+# Créer la subscription (pull)
+gcloud pubsub subscriptions create notification-subscription \
+   --topic=train-reservations \
+   --ack-deadline=60 \
+   --max-delivery-attempts=5 \
+   --dead-letter-topic=train-reservations-dlq
+
+# Récupère le service account Pub/Sub de ton projet
+PROJECT_NUMBER=$(gcloud projects describe kube-train-project --format="value(projectNumber)")
+
+# Donne les droits publisher sur le DLQ
+gcloud pubsub topics add-iam-policy-binding train-reservations-dlq \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+  --role="roles/pubsub.publisher"
+
+# Subscriber sur la subscription principale
+gcloud pubsub subscriptions add-iam-policy-binding notification-subscription \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+  --role="roles/pubsub.subscriber"
+  
+# Autorise le SA du cluster à publier et consommer sur Pub/Sub
+GCP_SA=$(gcloud iam service-accounts list --format="value(email)" --filter="email~kube-train" --project=kube-train-project | head -1)
+
+gcloud pubsub topics add-iam-policy-binding train-reservations \
+  --member="serviceAccount:${GCP_SA}" --role="roles/pubsub.publisher"
+
+gcloud pubsub subscriptions add-iam-policy-binding notification-subscription \
+  --member="serviceAccount:${GCP_SA}" --role="roles/pubsub.subscriber"
 ```

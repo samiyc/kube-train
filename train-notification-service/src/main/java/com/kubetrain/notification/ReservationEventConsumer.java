@@ -2,6 +2,7 @@ package com.kubetrain.notification;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -34,6 +35,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Slf4j
 @Component
+@Profile("!gcp")  // Kafka en local/test — Pub/Sub actif en profil gcp (voir PubSubReservationEventConsumer)
 public class ReservationEventConsumer {
 
     private final ObjectMapper objectMapper;

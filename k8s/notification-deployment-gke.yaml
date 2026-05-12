@@ -1,0 +1,88 @@
+# Déploiement GKE — train-notification-service
+#
+# ⚠️  Prérequis IAM (à exécuter une seule fois sur GCP) :
+#
+#   # Récupérer le SA du cluster (compute SA ou Workload Identity SA)
+#   GCP_SA=$(gcloud iam service-accounts list \
+#     --format="value(email)" \
+#     --filter="email~kube-train OR email~compute" \
+#     --project=kube-train-project | head -1)
+#
+#   # Accès subscriber pour la subscription Pub/Sub
+#   gcloud pubsub subscriptions add-iam-policy-binding notification-subscription \
+#     --member="serviceAccount:${GCP_SA}" \
+#     --role="roles/pubsub.subscriber" \
+#     --project=kube-train-project
+#
+#   # Accès publisher pour publier sur le topic (kube-train-api)
+#   gcloud pubsub topics add-iam-policy-binding train-reservations \
+#     --member="serviceAccount:${GCP_SA}" \
+#     --role="roles/pubsub.publisher" \
+#     --project=kube-train-project
+#
+# 🎯 Authentification automatique :
+#   Sur GKE, Application Default Credentials (ADC) récupère automatiquement
+#   les credentials depuis le metadata server → aucune clé JSON à gérer.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-deployment
+  labels:
+    app: notification
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-pod
+  template:
+    metadata:
+      labels:
+        app: notification-pod
+    spec:
+      containers:
+      - name: notification-container
+        image: NOTIFICATION_IMAGE_PLACEHOLDER
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8081
+
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "gcp"
+        - name: GCP_PROJECT_ID
+          value: "kube-train-project"
+        # Logs JSON structurés (ECS format) — Cloud Logging parse automatiquement
+        - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+          value: "ecs"
+
+        # Le service n'expose pas d'endpoint public, mais les probes K8s
+        # vérifient /actuator/health directement sur le pod.
+        startupProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8081
+          failureThreshold: 30
+          periodSeconds: 5
+
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8081
+          initialDelaySeconds: 0
+          periodSeconds: 10
+
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8081
+          initialDelaySeconds: 0
+          periodSeconds: 5
+
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"

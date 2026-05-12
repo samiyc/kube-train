@@ -18,6 +18,7 @@ env:
   REGION: europe-west1
   GKE_CLUSTER: kube-train-cluster
   IMAGE: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api
+  IMAGE_NOTIFICATION: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/train-notification-service
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # Évite le warning Node.js 20 deprecated
 
 jobs:
@@ -33,9 +34,13 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Lancer les tests
+      - name: Lancer les tests kube-train-api
         run: ./mvnw test
         working-directory: kube-train-api
+
+      - name: Lancer les tests notification-service
+        run: ./mvnw test
+        working-directory: train-notification-service
 
   build-and-deploy:
     name: Build & Deploy
@@ -54,12 +59,19 @@ jobs:
       - name: Configurer Docker pour Artifact Registry
         run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
 
-      - name: Build & Push de l'image Docker
+      - name: Build & Push de l'image Docker (kube-train-api)
         run: |
           docker build \
             -t ${{ env.IMAGE }}:${{ github.sha }} \
             kube-train-api/
           docker push ${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Build & Push de l'image Docker (notification-service)
+        run: |
+          docker build \
+            -t ${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }} \
+            train-notification-service/
+          docker push ${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}
 
       - name: Récupérer les credentials GKE
         uses: google-github-actions/get-gke-credentials@v2
@@ -103,8 +115,15 @@ jobs:
           kubectl apply -f k8s/service.yaml
           kubectl apply -f k8s/hpa.yaml
 
-      - name: Vérifier le déploiement
+          # Déployer le notification-service
+          sed "s|NOTIFICATION_IMAGE_PLACEHOLDER|${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}|g" \
+            k8s/notification-deployment-gke.yaml | kubectl apply -f -
+
+      - name: Vérifier le déploiement kube-train-api
         run: kubectl rollout status deployment/kube-train-deployment --timeout=5m
+
+      - name: Vérifier le déploiement notification-service
+        run: kubectl rollout status deployment/notification-deployment --timeout=5m
 
       # Résout l'IP externe du nginx-ingress-controller pour construire le host nip.io,
       # puis applique l'Ingress GKE avec TLS activé.

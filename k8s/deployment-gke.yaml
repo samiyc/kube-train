@@ -81,7 +81,9 @@ spec:
               name: kube-train-secrets
               key: API_KEY # La clé DANS le secret reste "API_KEY", c'est juste le nom de la variable qui change
         - name: SPRING_PROFILES_ACTIVE
-          value: "postgres"
+          value: "postgres,gcp"
+        - name: GCP_PROJECT_ID
+          value: "kube-train-project"
         - name: DB_USERNAME
           valueFrom:
             secretKeyRef:
