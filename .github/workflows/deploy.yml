@@ -176,11 +176,16 @@ jobs:
       # puis applique l'Ingress GKE avec TLS activé.
       # Prérequis (setup manuel unique) : nginx-ingress, cert-manager, ClusterIssuer letsencrypt-prod
       #   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.3/deploy/static/provider/cloud/deploy.yaml
-      #   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+      #   helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version v1.16.2 --set crds.enabled=true --set global.leaderElection.namespace=cert-manager
       #   sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|email@example.com|g" k8s/cluster-issuer.yaml | kubectl apply --validate=false -f -
+      # Si nginx-ingress n'est pas installé (ex: après recréation cluster), ce step est ignoré.
       - name: Déployer l'Ingress HTTPS (nip.io)
         if: steps.cluster_check.outputs.exists == 'true'
         run: |
+          if ! kubectl get namespace ingress-nginx &>/dev/null; then
+            echo "⚠️ nginx-ingress non installé — Ingress ignoré. Réinstaller manuellement si besoin."
+            exit 0
+          fi
           INGRESS_IP=$(kubectl get service ingress-nginx-controller \
             -n ingress-nginx \
             -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
