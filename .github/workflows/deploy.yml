@@ -42,9 +42,9 @@ jobs:
         run: ./mvnw test
         working-directory: train-notification-service
 
-  build-and-deploy:
-    name: Build & Deploy
-    needs: test  # Le déploiement ne se lance que si les tests passent
+  build:
+    name: Build & Push images
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
@@ -73,7 +73,38 @@ jobs:
             train-notification-service/
           docker push ${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}
 
+  deploy:
+    name: Deploy to GKE
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authentification GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/399291708401/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-actions-sa@kube-train-project.iam.gserviceaccount.com
+
+      # Vérifie que le cluster existe avant de tenter le déploiement.
+      # Si le cluster a été supprimé (économie de crédits le week-end), le job est ignoré (skipped)
+      # plutôt que d'échouer — le build reste vert et les images sont déjà pushées.
+      - name: Vérifier que le cluster GKE existe
+        id: cluster_check
+        run: |
+          if gcloud container clusters describe ${{ env.GKE_CLUSTER }} \
+              --region=${{ env.REGION }} \
+              --project=${{ env.PROJECT_ID }} \
+              --quiet 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Cluster ${{ env.GKE_CLUSTER }} introuvable — déploiement ignoré."
+          fi
+
       - name: Récupérer les credentials GKE
+        if: steps.cluster_check.outputs.exists == 'true'
         uses: google-github-actions/get-gke-credentials@v2
         with:
           cluster_name: ${{ env.GKE_CLUSTER }}
@@ -84,6 +115,7 @@ jobs:
       # → crée si absent, met à jour si présent (idempotent, safe en CI/CD)
       # GCP Secret Manager est la source de vérité — plus besoin de "kubectl create secret" manuellement.
       - name: Synchroniser le K8s secret depuis GCP Secret Manager
+        if: steps.cluster_check.outputs.exists == 'true'
         run: |
           API_KEY=$(gcloud secrets versions access latest \
             --secret=api-key \
@@ -107,6 +139,7 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Déployer sur GKE
+        if: steps.cluster_check.outputs.exists == 'true'
         run: |
           # Injecter le tag git SHA dans le manifest avant d'appliquer (évite un double rollout)
           sed "s|IMAGE_TAG_PLACEHOLDER|${{ env.IMAGE }}:${{ github.sha }}|g" \
@@ -120,9 +153,11 @@ jobs:
             k8s/notification-deployment-gke.yaml | kubectl apply -f -
 
       - name: Vérifier le déploiement kube-train-api
+        if: steps.cluster_check.outputs.exists == 'true'
         run: kubectl rollout status deployment/kube-train-deployment --timeout=5m
 
       - name: Vérifier le déploiement notification-service
+        if: steps.cluster_check.outputs.exists == 'true'
         run: kubectl rollout status deployment/notification-deployment --timeout=5m
 
       # Résout l'IP externe du nginx-ingress-controller pour construire le host nip.io,
@@ -131,8 +166,8 @@ jobs:
       #   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.3/deploy/static/provider/cloud/deploy.yaml
       #   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
       #   sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|email@example.com|g" k8s/cluster-issuer.yaml | kubectl apply --validate=false -f -
-      # puis applique l'Ingress GKE avec TLS activé.
       - name: Déployer l'Ingress HTTPS (nip.io)
+        if: steps.cluster_check.outputs.exists == 'true'
         run: |
           INGRESS_IP=$(kubectl get service ingress-nginx-controller \
             -n ingress-nginx \
