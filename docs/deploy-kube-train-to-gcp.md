@@ -62,7 +62,7 @@ kubectl get nodes                 # Pas de node par default avec GKE Autopilot
 ```
 
 #### Gestion du cluster (économiser les crédits)
-GKE Autopilot n'a pas de start/stop natif — on scale les pods à 0 pour "éteindre"
+GKE Autopilot n'a pas de start/stop natif. On scale les pods à 0 pour "éteindre"
 ```
 # Nombre de pods => Start / Shutdown / turnoff / kill
 kubectl scale deployment kube-train-deployment --replicas=0
@@ -74,13 +74,23 @@ kubectl get pods
 # Supprimer le cluster complètement (destroy, ~10 min pour recréer)
 gcloud container clusters delete kube-train-cluster --region=europe-west1
 
-# --- Recréer le cluster (après suppression) ---
+# --- Recréer le cluster via GCP (après suppression)
 gcloud container clusters create-auto kube-train-cluster --region=europe-west1
 gcloud container clusters get-credentials kube-train-cluster --region=europe-west1
 kubectl create secret generic kube-train-secrets --from-literal=API_KEY=<ta-clé>
-kubectl apply -f configmap.yaml && kubectl apply -f deployment-gke.yaml && kubectl apply -f service.yaml && kubectl apply -f hpa.yaml
-```
+kubectl apply -f configmap.yaml && kubectl apply -f deployment-gke.yaml \
+    && kubectl apply -f service.yaml && kubectl apply -f hpa.yaml
 
+# --- Recréer du cluster via Github action (si activé)
+git commit --allow-empty -m "Redeploy CI/CD" && git push
+# Puis reinstall monitoring :
+helm install monitoring prometheus-community/kube-prometheus-stack \
+    --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
+
+💡 La commande gcloud container clusters delete est safe.
+Tout le code est dans git, la CI/CD recrée tout. La seule chose "perdue" est l'état Helm (monitoring).
+La DB Cloud SQL est séparée du cluster, elle survit à la suppression du cluster.
+```
 #### Configuration k8S sur GCP
 ```
 cd /mnt/c/DEVDIR/GITHUB/kube-train/k8s/
