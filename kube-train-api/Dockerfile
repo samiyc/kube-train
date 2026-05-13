@@ -5,8 +5,11 @@ COPY pom.xml .
 COPY src ./src
 RUN mvn clean package -DskipTests
 
-# 2. Run Stage (L'image finale, légère)
-FROM eclipse-temurin:21-jre-alpine
+# 2. Run Stage (L'image finale)
+# ⚠️ NE PAS utiliser eclipse-temurin:21-jre-alpine ici !
+# google-cloud-pubsub embarque des libs natives gRPC/Netty compilées pour glibc (Debian/Ubuntu).
+# Alpine utilise musl libc → SIGSEGV au démarrage (netty_tcnative SSLContext crash).
+FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
 COPY --from=build /app/target/kube-train-api-0.0.1-SNAPSHOT.jar app.jar
 EXPOSE 8080
