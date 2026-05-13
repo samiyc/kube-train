@@ -961,3 +961,484 @@ Datadog envoie des requêtes réelles depuis ses data centers dans le monde. Si 
 > - *Métriques : Micrometer avec registry Prometheus, counters custom `reservations.created` par train_id, endpoint `/actuator/prometheus` exposé. Spring Boot ajoute automatiquement JVM, HTTP et BDD metrics.*
 > - *Traces : pas encore implémenté — l'étape naturelle serait `micrometer-tracing-bridge-otel` pour propager les Trace IDs entre l'API et le notification-service via Kafka."*
 
+---
+
+## 📝 J5 Matin — Notes de révision : Pub/Sub on GKE (remplacement de Kafka pour cloud-native)
+
+### GCP Pub/Sub vs Kafka — Quand utiliser lequel
+
+| Critère | GCP Pub/Sub | Apache Kafka |
+|---------|-------------|--------------|
+| Infra | Serverless, rien à gérer | Self-managed (ou Confluent Cloud) |
+| Scaling | Auto-scale transparent | Partitions manuelles |
+| Coût | Pay-per-message | Cluster toujours allumé |
+| Replay | Rétention 7j (max 31j) | Rétention illimitée, offset replay |
+| Cas idéal | Event-driven cloud-native, microservices GCP | Event sourcing, streaming haute volumétrie |
+| IAM | Natif GCP (Workload Identity) | SASL/SCRAM ou mTLS |
+| DLQ | Intégrée (max delivery attempts) | Manuelle (topic DLT + consumer dédié) |
+
+**Choix Pub/Sub pour kube-train sur GKE** :
+- Moins de quota consommée (pas de cluster Kafka 3 brokers)
+- Pas de cluster Zookeeper/KRaft à gérer en prod
+- IAM natif via Workload Identity (déjà configuré pour Cloud SQL)
+- DLQ intégrée sans code supplémentaire
+
+> **⚠️ Piège entretien** : *"Kafka est toujours mieux que Pub/Sub"* → FAUX. Pub/Sub est supérieur pour du cloud-native GCP pur. Kafka gagne quand on a besoin de replay infini, event sourcing, ou multi-cloud.
+
+---
+
+### Architecture Pub/Sub dans kube-train
+
+```
+┌──────────────────┐       Pub/Sub topic          ┌──────────────────────────┐
+│  kube-train-api  │──────"train-reservations"────▶│  notification-service    │
+│  (publisher)     │                               │  (subscriber)            │
+│  @Profile("gcp") │                               │  @Profile("gcp")         │
+└──────────────────┘                               └──────────────────────────┘
+                                                              │
+                                                    max 5 delivery attempts
+                                                              │ (nack)
+                                                              ▼
+                                                   ┌─────────────────────┐
+                                                   │ train-reservations-  │
+                                                   │ dlq (Dead Letter)    │
+                                                   └─────────────────────┘
+```
+
+**Composants Pub/Sub** :
+- **Topic** `train-reservations` : canal de messages (équivalent topic Kafka)
+- **Subscription** `notification-subscription` : attachée au topic, pull-based par le consumer
+- **DLQ topic** `train-reservations-dlq` : reçoit les messages après 5 échecs de livraison
+- **ack-deadline** : 60s pour traiter un message avant qu'il soit re-livré
+
+---
+
+### Spring Profiles — Stratégie Dual Messaging
+
+L'objectif : **même code, deux implémentations de messaging** selon l'environnement.
+
+```
+┌─────────────────────────────────────────────────┐
+│ Interface: ReservationEventPublisher             │
+│   void publish(ReservationEvent event)           │
+├─────────────────────────────────────────────────┤
+│ @Profile("gcp")  → PubSubReservationEventPublisher    │ GKE
+│ @Profile("!gcp") → KafkaReservationEventPublisher     │ Local Docker
+│ (si kafka disabled) → NoOpReservationEventPublisher   │ Sans Kafka
+└─────────────────────────────────────────────────┘
+```
+
+**Configuration par profil** :
+
+| Fichier | Contenu clé |
+|---------|-------------|
+| `application.properties` | Config par défaut (Kafka local, in-memory) |
+| `application-postgres.properties` | Datasource Cloud SQL |
+| `application-gcp.properties` | `spring.autoconfigure.exclude=...KafkaAutoConfiguration` |
+
+```properties
+# application-gcp.properties
+spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+```
+
+**deployment-gke.yaml** :
+```yaml
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: "postgres,gcp"
+```
+
+> **💡 Distinction importante** :
+> - `@Profile("gcp")` → gate un **bean entier** (ou une classe `@Configuration`)
+> - `@ConditionalOnProperty` → gate un **bean individuel** selon une property
+> - Les profils Spring gèrent des **arbres de beans**, les conditionals gèrent des **feuilles**
+
+---
+
+### PubSubReservationEventPublisher — Implémentation
+
+```java
+@Service
+@Profile("gcp")
+public class PubSubReservationEventPublisher implements ReservationEventPublisher {
+
+    private Publisher publisher;
+    private final String topicName = "train-reservations";
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @PostConstruct
+    public void init() throws IOException {
+        TopicName topic = TopicName.of("kube-train-project", topicName);
+        publisher = Publisher.newBuilder(topic).build();
+        // ADC (Application Default Credentials) — automatique sur GKE via metadata server
+    }
+
+    @Override
+    public void publish(ReservationEvent event) {
+        try {
+            String json = objectMapper.writeValueAsString(event);
+            PubsubMessage message = PubsubMessage.newBuilder()
+                .setData(ByteString.copyFromUtf8(json))
+                .putAttributes("reservationId", event.reservationId())
+                .build();
+
+            // Blocking get() — même pattern que Kafka sync
+            String messageId = publisher.publish(message).get(10, TimeUnit.SECONDS);
+            log.info("Published to Pub/Sub, messageId={}", messageId);
+        } catch (Exception e) {
+            throw new RuntimeException("Pub/Sub publish failed", e);
+        }
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        if (publisher != null) {
+            publisher.shutdown();
+        }
+    }
+}
+```
+
+**Points clés** :
+- `@PostConstruct` / `@PreDestroy` pour le lifecycle du `Publisher` (connexion gRPC)
+- **ADC** (Application Default Credentials) : sur GKE, le metadata server fournit les credentials automatiquement via Workload Identity. Pas de JSON key file.
+- `reservationId` en **attribut** du message (metadata) → filtrable côté subscription
+- `get(10, SECONDS)` bloquant pour garantir la livraison (comme `kafkaTemplate.send().get()`)
+
+---
+
+### PubSubReservationEventConsumer — Implémentation
+
+```java
+@Service
+@Profile("gcp")
+public class PubSubReservationEventConsumer {
+
+    private Subscriber subscriber;
+    private final Set<String> processedMessages = ConcurrentHashMap.newKeySet();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @PostConstruct
+    public void start() {
+        ProjectSubscriptionName subscription = ProjectSubscriptionName.of(
+            "kube-train-project", "notification-subscription");
+
+        MessageReceiver receiver = (PubsubMessage message, AckReplyConsumer consumer) -> {
+            String messageId = message.getMessageId();
+
+            // Idempotence — même pattern que Kafka
+            if (!processedMessages.add(messageId)) {
+                log.warn("Message déjà traité: {}", messageId);
+                consumer.ack();
+                return;
+            }
+
+            try {
+                String json = message.getData().toStringUtf8();
+                ReservationEvent event = objectMapper.readValue(json, ReservationEvent.class);
+                log.info("📧 Email envoyé (simulé) pour réservation {}", event.reservationId());
+                consumer.ack();   // ✅ succès → acknowledge
+            } catch (Exception e) {
+                log.error("Erreur traitement message: {}", e.getMessage());
+                consumer.nack();  // ❌ échec → retry → DLQ après 5 tentatives
+            }
+        };
+
+        subscriber = Subscriber.newBuilder(subscription, receiver).build();
+        subscriber.startAsync().awaitRunning();
+        log.info("Pub/Sub subscriber démarré sur {}", subscription);
+    }
+
+    @PreDestroy
+    public void stop() {
+        if (subscriber != null) {
+            subscriber.stopAsync();
+        }
+    }
+}
+```
+
+**Points clés** :
+- `MessageReceiver` : interface fonctionnelle `(PubsubMessage, AckReplyConsumer) → void`
+- `consumer.ack()` : message traité avec succès, ne sera plus re-livré
+- `consumer.nack()` : message échoué, sera re-livré après le backoff → DLQ après 5 tentatives
+- **Idempotence** : `ConcurrentHashSet` sur `messageId` (fourni par Pub/Sub, unique par message)
+- Le subscriber tourne en arrière-plan (`startAsync`) — contrairement à Kafka `@KafkaListener` qui est géré par Spring
+
+> **⚠️ Piège entretien** : *"Comment garantir l'idempotence avec Pub/Sub ?"*
+> → Pub/Sub garantit **at-least-once** delivery. Le consumer DOIT dédupliquer. On utilise le `messageId` natif (pas besoin d'un header custom comme en Kafka).
+
+---
+
+### Setup Pub/Sub — Commandes gcloud
+
+```bash
+# Créer les topics
+gcloud pubsub topics create train-reservations
+gcloud pubsub topics create train-reservations-dlq
+
+# Créer la subscription avec DLQ intégrée
+gcloud pubsub subscriptions create notification-subscription \
+  --topic=train-reservations \
+  --ack-deadline=60 \
+  --max-delivery-attempts=5 \
+  --dead-letter-topic=train-reservations-dlq
+
+# IAM : autoriser Pub/Sub à écrire dans le DLQ topic
+# (le service agent Pub/Sub a besoin du rôle publisher sur le DLQ)
+gcloud pubsub topics add-iam-policy-binding train-reservations-dlq \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+  --role="roles/pubsub.publisher"
+
+# Vérifier la config
+gcloud pubsub subscriptions describe notification-subscription
+```
+
+**Paramètres importants** :
+- `--ack-deadline=60` : le consumer a 60s pour `ack()` avant re-livraison
+- `--max-delivery-attempts=5` : après 5 échecs → message envoyé dans le DLQ
+- Le **service agent** Pub/Sub (`service-{PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com`) doit avoir `roles/pubsub.publisher` sur le DLQ topic sinon les messages échoués sont perdus silencieusement
+
+---
+
+### Piège Alpine + gRPC natif (bug résolu)
+
+> **⚠️ Bug critique** : crash silencieux au démarrage sur GKE (SIGSEGV, pas d'exception Java)
+
+**Symptôme** : le pod crash-loop sans aucun log Java. `kubectl logs` montre juste un signal kill.
+
+**Cause** :
+```
+google-cloud-pubsub  →  dépend de gRPC  →  dépend de netty-tcnative
+                                                    ↓
+                                          Lib native SSL compilée pour glibc
+                                                    ↓
+                                          Alpine utilise musl libc
+                                                    ↓
+                                          SIGSEGV (segfault au chargement de la lib native)
+```
+
+**Fix** : changer l'image de base dans le `Dockerfile` :
+
+```dockerfile
+# ❌ AVANT — crash silencieux avec Pub/Sub SDK
+FROM eclipse-temurin:21-jre-alpine
+
+# ✅ APRÈS — fonctionne avec gRPC/netty-tcnative
+FROM eclipse-temurin:21-jre-jammy
+```
+
+**Conséquence** : image plus grosse (~80MB → ~200MB), mais stable.
+
+> **💡 Leçon clé** : avant d'utiliser Alpine, vérifier si vos dépendances incluent des **libs natives** (JNI, netty-tcnative, RocksDB, etc.). Si oui → utiliser une image glibc (Debian/Ubuntu).
+
+| Image base | libc | Taille | Compatible gRPC natif |
+|-----------|------|--------|----------------------|
+| `21-jre-alpine` | musl | ~80MB | ❌ SIGSEGV |
+| `21-jre-jammy` | glibc (Ubuntu 22.04) | ~200MB | ✅ |
+| `21-jre-bookworm` | glibc (Debian 12) | ~210MB | ✅ |
+
+---
+
+## 📝 J5 Après-midi — Notes de révision : CI/CD Multi-service & Consolidation
+
+### Pipeline CI/CD restructurée — 3 jobs
+
+```
+┌─────────┐     ┌─────────┐     ┌─────────┐
+│  test   │────▶│  build  │────▶│ deploy  │
+│ (Maven) │     │ (Docker)│     │(kubectl)│
+└─────────┘     └─────────┘     └─────────┘
+     │               │               │
+     │               │               ├─ Check cluster exists
+     │               ├─ build API    ├─ Annotate SA (Workload Identity)
+     ├─ test API     ├─ build notif  ├─ Apply manifests (sed image tags)
+     ├─ test notif   └─ push both    └─ Apply Ingress HTTPS
+     └─ fail fast
+```
+
+**Avantages de la séparation en 3 jobs** :
+1. **Feedback rapide** : si les tests échouent, on ne build/push pas → économie de temps et quotas
+2. **Builds parallèles** : API et notification-service buildés en parallèle dans le job `build`
+3. **Isolation des failures** : on sait immédiatement SI c'est un problème de tests, de build Docker, ou de deploy K8s
+4. **Graceful skip** : le job `deploy` vérifie si le cluster GKE existe avant de déployer (évite erreur si cluster supprimé pour économiser les crédits)
+
+```yaml
+# Vérification cluster existence (dans le job deploy)
+- name: Check if GKE cluster exists
+  id: check-cluster
+  run: |
+    if gcloud container clusters describe kube-train-cluster \
+       --region=europe-west1 --format="value(name)" 2>/dev/null; then
+      echo "cluster_exists=true" >> $GITHUB_OUTPUT
+    else
+      echo "cluster_exists=true" >> $GITHUB_OUTPUT
+      echo "⚠️ Cluster not found — skipping deploy"
+    fi
+```
+
+---
+
+### Workload Identity — Ré-annotation après recréation de cluster
+
+**Problème** : après avoir supprimé et recréé le cluster GKE (pour économiser les crédits), le Cloud SQL Auth Proxy obtient une erreur `403 Permission Denied`.
+
+**Explication** :
+
+| Composant | Survit à la suppression du cluster ? |
+|-----------|--------------------------------------|
+| IAM binding (côté GCP) | ✅ Oui — c'est une policy GCP |
+| `kubectl annotate` (côté K8s) | ❌ Non — l'annotation est dans etcd du cluster |
+
+```bash
+# L'annotation qui lie le ServiceAccount K8s au ServiceAccount GCP
+kubectl annotate serviceaccount default \
+  --namespace default \
+  iam.gke.io/gcp-service-account=kube-train-sa@kube-train-project.iam.gserviceaccount.com \
+  --overwrite
+```
+
+**Sans cette annotation** :
+- Le pod démarre ✅
+- L'API répond sur `/` ✅
+- Cloud SQL Auth Proxy → `403 Permission Denied` ❌ (ne peut pas s'authentifier auprès de Cloud SQL)
+
+**Solution CI/CD** : le pipeline inclut maintenant l'annotation systématiquement (idempotent grâce à `--overwrite`) :
+
+```yaml
+- name: Annotate SA for Workload Identity
+  run: |
+    kubectl annotate serviceaccount default \
+      --namespace default \
+      iam.gke.io/gcp-service-account=kube-train-sa@kube-train-project.iam.gserviceaccount.com \
+      --overwrite
+```
+
+> **⚠️ Piège entretien** : *"Workload Identity ne marche plus après avoir recréé le cluster"*
+> → L'IAM binding survit (côté GCP), mais l'**annotation K8s est perdue** (côté cluster). Il faut la ré-appliquer.
+
+---
+
+### Notification-service — Premier déploiement GKE
+
+**Différences avec l'API** :
+
+| | kube-train-api | notification-service |
+|-|----------------|---------------------|
+| Profils | `postgres,gcp` | `gcp` (pas de BDD) |
+| Cloud SQL Proxy | ✅ sidecar (2/2 containers) | ❌ pas besoin (1/1) |
+| Image placeholder | `IMAGE_TAG_PLACEHOLDER` | `NOTIFICATION_IMAGE_PLACEHOLDER` |
+| Port exposé | 8080 (HTTP API) | Aucun (consumer only) |
+| Probes | `/actuator/health` | `/actuator/health` |
+
+```yaml
+# notification-deployment-gke.yaml (extrait)
+spec:
+  containers:
+    - name: notification-container
+      image: NOTIFICATION_IMAGE_PLACEHOLDER
+      env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "gcp"
+```
+
+**Pas de Service/Ingress** pour le notification-service : c'est un consumer pur (pas d'endpoint HTTP public). Il reçoit les messages via la subscription Pub/Sub.
+
+---
+
+### Tests — 27 tests au total
+
+#### TrainServiceTest — 6 tests
+
+```java
+// Tests avec profil postgres (TrainServicePostgres)
+@Test void shouldPersistReservation_postgres() { ... }
+@Test void shouldGetReservation_postgres() { ... }
+@Test void shouldThrow404_whenNotFound_postgres() { ... }
+
+// Tests avec profil default (TrainServiceMemory)
+@Test void shouldPersistReservation_memory() { ... }
+@Test void shouldGetReservation_memory() { ... }
+@Test void shouldThrow404_whenNotFound_memory() { ... }
+```
+
+#### KafkaReservationEventPublisherTest — 3 tests
+
+```java
+@Test void shouldPublishToCorrectTopic() { ... }
+@Test void shouldNotPublishToWrongTopic() { ... }
+@Test void shouldHandleKafkaDown() { ... }
+```
+
+#### PubSubReservationEventPublisherTest — 3 tests
+
+```java
+@Test void shouldPublishToPubSub() { ... }
+@Test void shouldPublishExactlyOnce() { ... }
+@Test void shouldHandlePubSubDown() { ... }
+```
+
+**Pattern de test** : `ReflectionTestUtils.setField()` pour injecter des mocks sans démarrer le contexte Spring :
+
+```java
+// Pas de @SpringBootTest → test unitaire rapide (< 100ms)
+PubSubReservationEventPublisher publisher = new PubSubReservationEventPublisher();
+Publisher mockPublisher = mock(Publisher.class);
+ReflectionTestUtils.setField(publisher, "publisher", mockPublisher);
+
+// Test
+publisher.publish(new ReservationEvent("RES-123", "TGV-001", 2));
+verify(mockPublisher).publish(any(PubsubMessage.class));
+```
+
+> **💡 Avantage** : pas de contexte Spring = tests en < 100ms. Parfait pour TDD et CI rapide.
+
+---
+
+### Phrase clé entretien — Pub/Sub
+
+> *"En local on utilise Kafka via Docker Compose pour le dev rapide. En production sur GKE, on utilise Pub/Sub — serverless, pas de cluster Kafka à gérer, IAM natif, DLQ intégrée. Le switch est transparent grâce aux profils Spring : `@Profile('gcp')` active Pub/Sub, sans `gcp` c'est Kafka."*
+
+---
+
+### Validation end-to-end — Flow testé en prod
+
+```
+POST /reservations (Swagger UI)
+    │
+    ▼
+PubSubReservationEventPublisher
+    │
+    ▼
+Pub/Sub topic "train-reservations"
+    │
+    ▼
+notification-subscription (pull)
+    │
+    ▼
+PubSubReservationEventConsumer
+    │
+    ▼
+log.info("📧 Email envoyé (simulé) pour réservation {}", event.reservationId())
+```
+
+**Vérification** :
+```bash
+# Logs de l'API (publisher)
+kubectl logs -l app=kube-train-pod | grep "Published to Pub/Sub"
+
+# Logs du notification-service (consumer)
+kubectl logs -l app=notification-pod | grep "Email envoyé"
+```
+
+---
+
+### Récap — Le discours Pub/Sub en entretien
+
+> *"Dans kube-train, j'ai implémenté un système de messaging dual :*
+> - *En local : Kafka via Docker Compose (docker-compose.yml avec KRaft, pas de Zookeeper). Consumer avec @KafkaListener, DLT manuelle via un topic dédié.*
+> - *Sur GKE : Pub/Sub serverless. Publisher avec le SDK google-cloud-pubsub, subscriber avec MessageReceiver. DLQ native après 5 tentatives.*
+> - *Le switch est invisible grâce aux profils Spring (@Profile('gcp') vs @Profile('!gcp')). Les deux implémentent la même interface ReservationEventPublisher.*
+> - *Bug résolu : crash Alpine + gRPC natif (netty-tcnative/musl incompatible) → migration vers eclipse-temurin:21-jre-jammy.*
+> - *27 tests unitaires dont 3 spécifiques Pub/Sub avec ReflectionTestUtils pour injecter des mocks sans contexte Spring."*
+
