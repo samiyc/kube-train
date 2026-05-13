@@ -78,10 +78,17 @@ kubectl get pods
 # Supprimer le cluster complètement (destroy, ~5-10 min pour recréer)
 gcloud container clusters delete kube-train-cluster --region=europe-west1
 
-# Recréer le cluster GKE (après suppression) — 2 commandes suffisent
+# Recréer le cluster GKE (après suppression) — 3 commandes suffisent
 # Le CI/CD s'occupe du reste (secrets, manifests, images) via git push
 gcloud container clusters create-auto kube-train-cluster --region=europe-west1
 gcloud container clusters get-credentials kube-train-cluster --region=europe-west1
+
+# ⚠️ OBLIGATOIRE après recréation : ré-annoter le K8s SA (perdu à la suppression du cluster)
+# L'IAM binding GCP survit, mais l'annotation K8s disparaît avec le cluster.
+# Sans ça → Cloud SQL Auth Proxy 403 au démarrage.
+kubectl annotate serviceaccount default \
+  iam.gke.io/gcp-service-account=399291708401-compute@developer.gserviceaccount.com \
+  --namespace=default
 
 # Déclencher le déploiement complet via GitHub Actions (secrets + manifests + images)
 git commit --allow-empty -m "chore: redeploy après recréation cluster" && git push

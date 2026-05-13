@@ -110,6 +110,18 @@ jobs:
           cluster_name: ${{ env.GKE_CLUSTER }}
           location: ${{ env.REGION }}
 
+      # Workload Identity — annotation sur le K8s SA "default"
+      # Perdue à chaque re-création de cluster (ressource K8s, pas GCP).
+      # --overwrite rend la commande idempotente (safe même si déjà annotée).
+      # Sans cette annotation, le Cloud SQL Auth Proxy reçoit un token sans identité GCP → 403.
+      - name: Configurer Workload Identity (annoter le K8s SA default)
+        if: steps.cluster_check.outputs.exists == 'true'
+        run: |
+          kubectl annotate serviceaccount default \
+            iam.gke.io/gcp-service-account=399291708401-compute@developer.gserviceaccount.com \
+            --namespace=default \
+            --overwrite
+
       # Lit le secret depuis GCP Secret Manager et crée/met à jour le K8s secret.
       # Pattern "upsert" : --dry-run=client -o yaml | kubectl apply -f -
       # → crée si absent, met à jour si présent (idempotent, safe en CI/CD)
