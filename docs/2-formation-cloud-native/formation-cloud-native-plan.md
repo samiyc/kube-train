@@ -6,28 +6,33 @@
 
 ---
 
-## État des lieux — Acquis sur kube-train
+## État des lieux — Acquis sur kube-train (mis à jour 18/05/2026)
 
-| Sujet | Statut |
-|---|---|
-| Java 21 / Spring Boot / Maven | ✅ Maîtrisé |
-| Docker / Dockerfile multi-stage | ✅ Fait |
-| K8s : Pods, Deployments, Services, Ingress, ConfigMap, Secret, PVC, HPA, Probes | ✅ Fait |
-| Minikube local | ✅ Fait |
-| Load testing (Locust) | ✅ Fait |
-| GKE Autopilot | ✅ Fait |
-| Artifact Registry | ✅ Fait |
-| GitHub Actions CI/CD | ✅ Fait |
-| IAM / Service Accounts / Workload Identity Federation | ✅ Fait |
-| HTTPS / Certificats | ❌ À faire |
-| GCP Secret Manager | ❌ À faire |
-| Cloud SQL (Postgres managé) | ❌ À faire |
-| Pub/Sub / Kafka | ❌ À faire |
-| Cloud Logging / Monitoring | ❌ À faire |
-| API-First (OpenAPI contract-first) | ❌ À faire |
-| Contract Testing (Spring Cloud Contract / Pact) | ❌ À faire |
-| Event-Driven Architecture (patterns) | ❌ À faire |
-| Observabilité (Datadog concepts) | ❌ À faire |
+| Sujet | Statut | Notes |
+|---|---|---|
+| Java 21 / Spring Boot 4 / Maven multi-module | ✅ Maîtrisé | Parent POM + 2 modules |
+| Docker / Dockerfile (jammy, pas alpine) | ✅ Fait | gRPC natif exige glibc |
+| K8s : Pods, Deployments, Services, Ingress, ConfigMap, Secret, PVC, HPA, Probes | ✅ Fait | Formation 1 |
+| Minikube local | ✅ Fait | Formation 1 |
+| Load testing (Locust) | ✅ Fait | locustfile.py |
+| GKE Autopilot | ✅ Fait | J1-J2 |
+| Artifact Registry | ✅ Fait | J1 |
+| GitHub Actions CI/CD (3 jobs: test → build → deploy) | ✅ Fait | J5 |
+| IAM / Service Accounts / Workload Identity Federation | ✅ Fait | J3 |
+| HTTPS / cert-manager / Let's Encrypt | ✅ Fait | J3 |
+| GCP Secret Manager | ✅ Fait | J3 — pipeline upsert K8s secret |
+| Cloud SQL (Postgres managé + Auth Proxy sidecar) | ✅ Fait | J3 |
+| Kafka (local Docker Compose KRaft) | ✅ Fait | J2 — idempotence + DLT |
+| Pub/Sub (GKE, DLQ native) | ✅ Fait | J5 — remplace Kafka en prod |
+| Cloud Logging (JSON ECS) / SLI-SLO | ✅ Fait | J3-J4 |
+| API-First (Swagger UI, ProblemDetail RFC 9457) | ✅ Fait | J1 — code-first avec springdoc |
+| Event-Driven Architecture (patterns théorie) | ✅ Fait | J2 — Saga, Outbox, idempotence |
+| Observabilité (Micrometer + concepts Datadog) | ✅ Fait | J4 |
+| Spring Profiles dual-messaging (@Profile gcp/!gcp) | ✅ Fait | J5 |
+| Contract Testing (Spring Cloud Contract) | ⏭️ Reporté | → Formation 3 (impl) |
+| Outbox Pattern (implémentation) | ⏭️ Reporté | → Formation 3 (impl) |
+| OpenTelemetry / Distributed Tracing (implémentation) | ⏭️ Reporté | → Formation 3 (impl) |
+| Flyway DB migrations | ⏭️ Reporté | → Formation 3 (impl) |
 
 ---
 
@@ -333,25 +338,29 @@ docker exec -it kafka-kube-train /opt/kafka/bin/kafka-console-producer.sh \
 docker exec kafka-kube-train /opt/kafka/bin/kafka-console-consumer.sh \
    --bootstrap-server localhost:9092 --topic train-reservations --from-beginning
 ```
-### 🏗️ Écarts vs production — audit rapide
+### 🏗️ Écarts vs production — audit rapide (fin formation 2)
 ```
-┌───────────────────┬──────────────────────────┬───────────────────────────────────────┐
-│ Aspect            │ Ce POC                   │ Production                            │
-├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
-│ BDD               │ In-memory (HashMap)      │ PostgreSQL/MySQL + JPA/Hibernate      │
-├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
-│ Front             │ Swagger UI               │ React/Angular/Vue                     │
-├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
-│ Auth              │ Header X-API-KEY basique │ OAuth2/OIDC (Keycloak, GCP IAP)       │
-├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
-│ Observabilité     │ Logs console             │ Prometheus + Grafana + Cloud Logging  │
-├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
-│ Config            │ application.properties   │ Spring Cloud Config / Secret Manager  │
-├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
-│ Schema Kafka      │ JSON brut                │ Avro + Schema Registry                │
-├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
-│ Tests             │ Unit + Contract          │ + Integration (Testcontainers) + E2E  │
-├───────────────────┼──────────────────────────┼───────────────────────────────────────┤
-│ Résilience        │ Aucune                   │ Circuit Breaker (Resilience4j), Retry │
-└───────────────────┴──────────────────────────┴───────────────────────────────────────┘
-```  
+┌───────────────────┬──────────────────────────────┬───────────────────────────────────────┐
+│ Aspect            │ Ce POC (kube-train)          │ Production                            │
+├───────────────────┼──────────────────────────────┼───────────────────────────────────────┤
+│ BDD               │ Cloud SQL PostgreSQL         │ +Flyway migrations (formation 3)      │
+├───────────────────┼──────────────────────────────┼───────────────────────────────────────┤
+│ Front             │ Swagger UI                   │ React/Angular/Vue                     │
+├───────────────────┼──────────────────────────────┼───────────────────────────────────────┤
+│ Auth              │ Header X-API-KEY basique     │ OAuth2/OIDC (formation 3)             │
+├───────────────────┼──────────────────────────────┼───────────────────────────────────────┤
+│ Observabilité     │ JSON ECS + Micrometer        │ +OpenTelemetry traces (formation 3)   │
+├───────────────────┼──────────────────────────────┼───────────────────────────────────────┤
+│ Config            │ Secret Manager + ConfigMap   │ OK                                    │
+├───────────────────┼──────────────────────────────┼───────────────────────────────────────┤
+│ Schema Kafka      │ JSON brut                    │ Avro + Schema Registry                │
+├───────────────────┼──────────────────────────────┼───────────────────────────────────────┤
+│ Tests             │ 27 unit tests                │ +Contract +E2E Cucumber (formation 3) │
+├───────────────────┼──────────────────────────────┼───────────────────────────────────────┤
+│ Messaging prod    │ Pub/Sub + DLQ                │ OK (Kafka si multi-cloud)             │
+├───────────────────┼──────────────────────────────┼───────────────────────────────────────┤
+│ CD                │ GitHub Actions push-based    │ +ArgoCD pull-based (formation 3)      │
+├───────────────────┼──────────────────────────────┼───────────────────────────────────────┤
+│ Résilience        │ Aucune                       │ Circuit Breaker (Resilience4j), Retry │
+└───────────────────┴──────────────────────────────┴───────────────────────────────────────┘
+```
