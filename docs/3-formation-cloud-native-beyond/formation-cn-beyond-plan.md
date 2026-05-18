@@ -14,42 +14,42 @@
 ## 📐 Architecture cible (état final après J5)
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              GKE Autopilot Cluster                               │
-│                                                                                 │
-│  ┌──────────────────────┐         ┌──────────────────────────┐                  │
-│  │  kube-train-api      │         │  train-notification-svc  │                  │
-│  │  (Spring Boot 4)     │         │  (Spring Boot 4)         │                  │
-│  │                      │         │                          │                  │
-│  │  • OAuth2 Resource   │  Kafka  │  • Kafka Consumer        │                  │
-│  │    Server            ├────────►│  • OpenTelemetry Agent   │                  │
-│  │  • Flyway migrations │         │  • Contract Stub         │                  │
-│  │  • Outbox table      │         │                          │                  │
-│  │  • OpenTelemetry     │         └──────────┬───────────────┘                  │
-│  │  • Cucumber BDD      │                    │                                  │
-│  │  • Contract Producer │                    │ traces                           │
-│  └──────────┬───────────┘                    ▼                                  │
-│             │                    ┌───────────────────────┐                       │
-│             │ SQL                │  Cloud Trace / Tempo  │                       │
-│             ▼                    └───────────────────────┘                       │
-│  ┌──────────────────────┐                                                       │
-│  │  Cloud SQL (Postgres) │◄── Flyway V1..Vn                                    │
-│  │  + outbox table       │                                                      │
-│  └───────────────────────┘                                                      │
-│                                                                                 │
-│  ┌─────────────────────────────────────────────────────────────┐                │
-│  │  Network Policies (zero-trust)                              │                │
-│  │  • api ↔ notification : port 8080 only                      │                │
-│  │  • api → postgres : port 5432 only                          │                │
-│  │  • deny all ingress par défaut                              │                │
-│  └─────────────────────────────────────────────────────────────┘                │
-└─────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                              GKE Autopilot Cluster                   │
+│                                                                      │
+│  ┌──────────────────────┐         ┌──────────────────────────┐       │
+│  │  kube-train-api      │         │  train-notification-svc  │       │
+│  │  (Spring Boot 4)     │         │  (Spring Boot 4)         │       │
+│  │                      │         │                          │       │
+│  │  • OAuth2 Resource   │  Kafka  │  • Kafka Consumer        │       │
+│  │    Server            ├────────►│  • OpenTelemetry Agent   │       │
+│  │  • Flyway migrations │         │  • Contract Stub         │       │
+│  │  • Outbox table      │         │                          │       │
+│  │  • OpenTelemetry     │         └──────────┬───────────────┘       │
+│  │  • Cucumber BDD      │                    │                       │
+│  │  • Contract Producer │                    │ traces                │
+│  └──────────┬───────────┘                    ▼                       │
+│             │                    ┌───────────────────────┐           │
+│             │ SQL                │  Cloud Trace / Tempo  │           │
+│             ▼                    └───────────────────────┘           │
+│  ┌───────────────────────┐                                           │
+│  │  Cloud SQL (Postgres) │◄── Flyway V1..Vn                          │
+│  │  + outbox table       │                                           │
+│  └───────────────────────┘                                           │
+│                                                                      │
+│  ┌─────────────────────────────────────────────────────────────┐     │
+│  │  Network Policies (zero-trust)                              │     │
+│  │  • api ↔ notification : port 8080 only                      │     │
+│  │  • api → postgres : port 5432 only                          │     │
+│  │  • deny all ingress par défaut                              │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+└──────────────────────────────────────────────────────────────────────┘
 
          ▲ GitOps (pull)                    ▲ Push image
          │                                  │
-┌────────┴────────────┐          ┌──────────┴──────────────────────┐
+┌────────┴────────────┐          ┌──────────┴───────────────────────┐
 │  ArgoCD             │          │  GitHub Actions CI               │
-│  (sync k8s/ → GKE) │          │  • Maven test + Cucumber         │
+│  (sync k8s/ → GKE)  │          │  • Maven test + Cucumber         │
 │  • Auto-sync        │          │  • SonarCloud analysis           │
 │  • Health checks    │          │  • Trivy image scan              │
 │  • Rollback auto    │          │  • Contract tests                │

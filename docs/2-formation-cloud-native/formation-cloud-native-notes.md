@@ -990,19 +990,19 @@ Datadog envoie des requêtes réelles depuis ses data centers dans le monde. Si 
 ### Architecture Pub/Sub dans kube-train
 
 ```
-┌──────────────────┐       Pub/Sub topic          ┌──────────────────────────┐
-│  kube-train-api  │──────"train-reservations"────▶│  notification-service    │
-│  (publisher)     │                               │  (subscriber)            │
-│  @Profile("gcp") │                               │  @Profile("gcp")         │
-└──────────────────┘                               └──────────────────────────┘
-                                                              │
-                                                    max 5 delivery attempts
-                                                              │ (nack)
-                                                              ▼
-                                                   ┌─────────────────────┐
-                                                   │ train-reservations-  │
-                                                   │ dlq (Dead Letter)    │
-                                                   └─────────────────────┘
+┌──────────────────┐      Pub/Sub topic             ┌──────────────────────────┐
+│  kube-train-api  │───── "train-reservations" ────>│  notification-service    │
+│  (publisher)     │                                │  (subscriber)            │
+│  @Profile("gcp") │                                │  @Profile("gcp")         │
+└──────────────────┘                                └──────────────────────────┘
+                                                               │
+                                                     max 5 delivery attempts
+                                                               │    (nack)
+                                                               ▼
+                                                    ┌─────────────────────────┐
+                                                    │ train-reservations-dlq  │
+                                                    │ (Dead Letter)           │
+                                                    └─────────────────────────┘
 ```
 
 **Composants Pub/Sub** :
@@ -1018,14 +1018,14 @@ Datadog envoie des requêtes réelles depuis ses data centers dans le monde. Si 
 L'objectif : **même code, deux implémentations de messaging** selon l'environnement.
 
 ```
-┌─────────────────────────────────────────────────┐
-│ Interface: ReservationEventPublisher             │
-│   void publish(ReservationEvent event)           │
-├─────────────────────────────────────────────────┤
-│ @Profile("gcp")  → PubSubReservationEventPublisher    │ GKE
-│ @Profile("!gcp") → KafkaReservationEventPublisher     │ Local Docker
-│ (si kafka disabled) → NoOpReservationEventPublisher   │ Sans Kafka
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│ Interface: ReservationEventPublisher                 │
+│   void publish(ReservationEvent event)               │
+├──────────────────────────────────────────────────────┤
+│ @Profile("gcp")  → PubSubReservationEventPublisher   │ GKE
+│ @Profile("!gcp") → KafkaReservationEventPublisher    │ Local Docker
+│ (si kafka disabled) → NoOpReservationEventPublisher  │ Sans Kafka
+└──────────────────────────────────────────────────────┘
 ```
 
 **Configuration par profil** :
@@ -1245,16 +1245,15 @@ FROM eclipse-temurin:21-jre-jammy
 ### Pipeline CI/CD restructurée — 3 jobs
 
 ```
-┌─────────┐     ┌─────────┐     ┌─────────┐
-│  test   │────▶│  build  │────▶│ deploy  │
-│ (Maven) │     │ (Docker)│     │(kubectl)│
-└─────────┘     └─────────┘     └─────────┘
+┌─────────┐     ┌──────────┐     ┌───────────┐
+│  test   │────>│  build   │────>│  deploy   │
+│ (Maven) │     │ (Docker) │     │ (kubectl) │
+└─────────┘     └──────────┘     └───────────┘
      │               │               │
-     │               │               ├─ Check cluster exists
-     │               ├─ build API    ├─ Annotate SA (Workload Identity)
-     ├─ test API     ├─ build notif  ├─ Apply manifests (sed image tags)
-     ├─ test notif   └─ push both    └─ Apply Ingress HTTPS
-     └─ fail fast
+     ├─ test API     ├─ build API    ├─ Check cluster exists
+     ├─ test notif   ├─ build notif  ├─ Annotate SA (Workload Identity)
+     └─ fail fast    └─ push both    ├─ Apply manifests (sed image tags)
+                                     └─ Apply Ingress HTTPS
 ```
 
 **Avantages de la séparation en 3 jobs** :
