@@ -1,15 +1,19 @@
 package com.kubetrain.api.service;
 
 import com.kubetrain.api.dto.*;
+import com.kubetrain.api.entity.OutboxEvent;
 import com.kubetrain.api.entity.Reservation;
 import com.kubetrain.api.event.ReservationEvent;
 import com.kubetrain.api.event.ReservationEventPublisher;
 import com.kubetrain.api.exception.TrainNotFoundException;
+import com.kubetrain.api.repository.OutboxEventRepository;
 import com.kubetrain.api.repository.ReservationRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -29,8 +33,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *  - Réutilisable : un autre controller (ou un consumer Kafka) peut appeler le même service
  *
  * 🎯 Stratégie de persistance optionnelle (profil Spring) :
- *  - Profil "default" (local/tests) : reservationRepository == null → stockage en mémoire
- *  - Profil "postgres" (GKE) : reservationRepository injecté → persist en Cloud SQL
+ *  - Profil "default" (local/tests) : reservationRepository == null → stockage en mémoire + publish direct
+ *  - Profil "postgres" (GKE) : reservationRepository + outboxEventRepository injectés
+ *    → persist en Cloud SQL + écriture dans l'outbox (OutboxPoller publie ensuite)
  *  L'injection optionnelle via @Autowired(required = false) évite de démarrer une DataSource
  *  quand le profil "postgres" n'est pas actif.
  */
@@ -44,6 +49,14 @@ public class TrainService {
     // Injection optionnelle : null si profil "postgres" inactif (JPA exclu par défaut)
     @Autowired(required = false)
     private ReservationRepository reservationRepository;
+
+    // Injection optionnelle : null si profil "postgres" inactif
+    @Autowired(required = false)
+    private OutboxEventRepository outboxEventRepository;
+
+    // Auto-configuré par Spring Boot (Jackson 3) — null uniquement en tests unitaires
+    @Autowired
+    private ObjectMapper objectMapper;
 
     public TrainService(ReservationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
         this.eventPublisher = eventPublisher;
@@ -75,6 +88,7 @@ public class TrainService {
         return train;
     }
 
+    @Transactional
     public ReservationResponse createReservation(CreateReservationRequest request) {
         TrainResponse train = getTrainById(request.trainId());
 
@@ -91,6 +105,16 @@ public class TrainService {
                 .price(train.price())
                 .build();
 
+        // Événement à publier (construit une seule fois, utilisé selon la stratégie active)
+        ReservationEvent event = ReservationEvent.builder()
+                .eventId(UUID.randomUUID().toString())
+                .reservationId(reservationId)
+                .trainId(train.id())
+                .passengerName(request.passengerName())
+                .price(train.price())
+                .createdAt(Instant.now())
+                .build();
+
         if (reservationRepository != null) {
             // Profil "postgres" : persistance en base de données
             reservationRepository.save(Reservation.builder()
@@ -105,26 +129,36 @@ public class TrainService {
                     .build());
             log.info("Réservation {} persistée en Cloud SQL (train={}, passager={})",
                     reservationId, train.id(), request.passengerName());
+
+            if (outboxEventRepository != null) {
+                // 🎯 Outbox Pattern : écriture dans la même transaction que la réservation.
+                // OutboxPoller publiera l'événement de manière asynchrone.
+                try {
+                    outboxEventRepository.save(OutboxEvent.builder()
+                            .aggregateId(reservationId)
+                            .eventType("ReservationCreated")
+                            .payload(objectMapper.writeValueAsString(event))
+                            .status("PENDING")
+                            .createdAt(Instant.now())
+                            .build());
+                    log.debug("[OUTBOX] Événement {} enregistré pour la réservation {}", event.eventId(), reservationId);
+                } catch (Exception e) {
+                    log.error("[OUTBOX] Impossible de sérialiser l'événement pour {} : {}", reservationId, e.getMessage());
+                    throw new RuntimeException("Échec écriture outbox pour " + reservationId, e);
+                }
+            } else {
+                // Fallback : publication directe si outboxEventRepository non disponible
+                eventPublisher.publish(event);
+            }
         } else {
-            // Profil "default" : stockage en mémoire (local, tests)
+            // Profil "default" : stockage en mémoire + publication directe (local/tests)
             reservations.put(reservationId, response);
             log.debug("Réservation {} stockée en mémoire (profil default)", reservationId);
+            eventPublisher.publish(event);
         }
 
         // 🎯 Micrometer counter — incrémenté à chaque réservation créée
-        // Tag "train_id" : permet de filtrer par train dans Grafana/Prometheus
-        // Visible sur : GET /actuator/prometheus → reservations_created_total{train_id="TGV-7042"}
         meterRegistry.counter("reservations.created", "train_id", train.id()).increment();
-
-        // Publier l'événement Kafka (sync — attend l'ack du broker)
-        eventPublisher.publish(ReservationEvent.builder()
-                .eventId(UUID.randomUUID().toString())
-                .reservationId(reservationId)
-                .trainId(train.id())
-                .passengerName(request.passengerName())
-                .price(train.price())
-                .createdAt(Instant.now())
-                .build());
 
         return response;
     }

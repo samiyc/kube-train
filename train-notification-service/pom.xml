@@ -27,6 +27,14 @@
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
+			<!-- Spring Cloud BOM : gère la version de spring-cloud-contract-stub-runner -->
+			<dependency>
+				<groupId>org.springframework.cloud</groupId>
+				<artifactId>spring-cloud-dependencies</artifactId>
+				<version>2025.1.1</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
 		</dependencies>
 	</dependencyManagement>
 
@@ -65,6 +73,17 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!--
+			Spring Cloud Contract Stub Runner — côté CONSUMER
+			🎯 Télécharge les stubs WireMock générés par kube-train-api (mvn install)
+			   et démarre un serveur WireMock local pour les tests.
+			   Permet de tester le consumer sans démarrer kube-train-api réel.
+		-->
+		<dependency>
+			<groupId>org.springframework.cloud</groupId>
+			<artifactId>spring-cloud-starter-contract-stub-runner</artifactId>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>

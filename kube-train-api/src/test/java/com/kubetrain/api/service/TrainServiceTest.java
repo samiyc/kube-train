@@ -2,10 +2,12 @@ package com.kubetrain.api.service;
 
 import com.kubetrain.api.dto.CreateReservationRequest;
 import com.kubetrain.api.dto.ReservationResponse;
+import com.kubetrain.api.entity.OutboxEvent;
 import com.kubetrain.api.entity.Reservation;
 import com.kubetrain.api.event.ReservationEvent;
 import com.kubetrain.api.event.ReservationEventPublisher;
 import com.kubetrain.api.exception.TrainNotFoundException;
+import com.kubetrain.api.repository.OutboxEventRepository;
 import com.kubetrain.api.repository.ReservationRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -42,7 +45,55 @@ class TrainServiceTest {
         eventPublisher = mock(ReservationEventPublisher.class);
         reservationRepository = mock(ReservationRepository.class);
         service = new TrainService(eventPublisher, new SimpleMeterRegistry());
+        // objectMapper null par défaut → ne sera setté que dans les tests qui en ont besoin
         // reservationRepository = null par défaut → branche mémoire active
+    }
+
+    // ==================== createReservation — branche outbox (profil postgres complet) ====================
+
+    @Nested
+    @DisplayName("createReservation — profil postgres + outbox (Transactional Outbox Pattern)")
+    class CreateReservationWithOutboxTests {
+
+        private OutboxEventRepository outboxEventRepository;
+
+        @BeforeEach
+        void injectOutboxRepositories() {
+            ReflectionTestUtils.setField(service, "reservationRepository", reservationRepository);
+            outboxEventRepository = mock(OutboxEventRepository.class);
+            ReflectionTestUtils.setField(service, "outboxEventRepository", outboxEventRepository);
+            ReflectionTestUtils.setField(service, "objectMapper", new ObjectMapper());
+        }
+
+        @Test
+        @DisplayName("Écrit dans la table outbox au lieu de publier directement sur Kafka/Pub Sub")
+        void shouldWriteToOutboxInsteadOfPublishing() {
+            service.createReservation(new CreateReservationRequest("Jean Dupont", "TGV-7042"));
+
+            // L'événement doit atterrir dans l'outbox
+            verify(outboxEventRepository).save(any(OutboxEvent.class));
+
+            // Publication directe ne doit PAS avoir lieu — c'est OutboxPoller qui s'en charge
+            verifyNoInteractions(eventPublisher);
+        }
+
+        @Test
+        @DisplayName("Le payload outbox contient les informations de la réservation")
+        void shouldWriteCorrectPayloadToOutbox() {
+            service.createReservation(new CreateReservationRequest("Marie Curie", "TER-2814"));
+
+            ArgumentCaptor<OutboxEvent> captor = ArgumentCaptor.forClass(OutboxEvent.class);
+            verify(outboxEventRepository).save(captor.capture());
+            OutboxEvent saved = captor.getValue();
+
+            assertThat(saved.getAggregateId()).startsWith("RES-");
+            assertThat(saved.getEventType()).isEqualTo("ReservationCreated");
+            assertThat(saved.getStatus()).isEqualTo("PENDING");
+            assertThat(saved.getCreatedAt()).isNotNull();
+            // Le payload JSON doit contenir les données métier clés
+            assertThat(saved.getPayload()).contains("TER-2814");
+            assertThat(saved.getPayload()).contains("Marie Curie");
+        }
     }
 
     // ==================== createReservation — branche repository (profil postgres) ====================

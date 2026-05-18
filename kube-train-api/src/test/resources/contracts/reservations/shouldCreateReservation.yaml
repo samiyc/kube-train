@@ -1,10 +1,14 @@
 # Contrat : le producer DOIT créer une réservation et retourner 201
 # Les champs dynamiques (reservationId, wagon, departureTime) sont validés par regex.
 #
-# 🎯 Pourquoi des matchers ?
-#  Le reservationId contient un UUID → différent à chaque appel.
-#  Le contrat vérifie le FORMAT (RES-XXXXXXXX) sans imposer la valeur exacte.
-#  C'est la bonne pratique : tester le contrat, pas l'implémentation.
+# 🎯 body: vs matchers: — deux niveaux de vérification
+#  - body:        → valeurs d'exemple retournées par le stub WireMock (côté consumer)
+#                   Ce sont des valeurs concrètes, pas les valeurs réelles de prod.
+#  - matchers:    → patterns regex pour le test auto-généré du producer.
+#                   Vérifient que la vraie API respecte le FORMAT, pas la valeur exacte.
+#
+# Sans body: pour un champ dynamique → le stub WireMock ne retourne pas ce champ du tout.
+# Avec body: + matcher: → le stub retourne l'exemple, le test producer vérifie le format réel.
 description: "Crée une réservation pour un train existant"
 name: shouldCreateReservation
 request:
@@ -24,6 +28,9 @@ response:
     status: "CONFIRMED"
     trainId: "TGV-7042"
     price: 29.9
+    reservationId: "RES-EFB30294"
+    wagon: "Wagon 4"
+    departureTime: "2026-05-18T12:00:00Z"
   matchers:
     body:
       - path: $.reservationId

@@ -34,12 +34,12 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Lancer les tests kube-train-api
-        run: ./mvnw test
+      - name: Lancer les tests kube-train-api (génère et installe les stubs de contrats)
+        run: ./mvnw install --no-transfer-progress
         working-directory: kube-train-api
 
-      - name: Lancer les tests notification-service
-        run: ./mvnw test
+      - name: Lancer les tests notification-service (contrats consumer + tests unitaires)
+        run: ./mvnw test --no-transfer-progress
         working-directory: train-notification-service
 
   build:
