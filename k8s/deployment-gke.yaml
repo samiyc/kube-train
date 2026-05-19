@@ -99,6 +99,15 @@ spec:
         # Désactivé en local (application.properties) pour garder des logs lisibles.
         - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
           value: "ecs"
+        # OpenTelemetry — traces vers le OTel Collector (qui exporte vers Cloud Trace)
+        - name: OTEL_SERVICE_NAME
+          value: "kube-train-api"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector-service:4317"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "grpc"
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: "k8s.namespace.name=default,k8s.deployment.name=kube-train-deployment"
 
       # Sidecar Cloud SQL Auth Proxy
       # Intercepte les connexions JDBC sur 127.0.0.1:5432 et les route de façon sécurisée vers Cloud SQL.

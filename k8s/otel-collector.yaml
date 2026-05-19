@@ -1,0 +1,111 @@
+# OTel Collector — reçoit les traces OTLP des pods et les exporte vers Cloud Trace
+#
+# Architecture :
+#   kube-train-api / notification-service
+#       → OTLP gRPC (otel-collector-service:4317)
+#       → OTel Collector (googlecloud exporter)
+#       → Cloud Trace (GCP)
+#
+# ⚠️ Prérequis GCP (à exécuter une seule fois avant le premier déploiement) :
+#
+#   # Activer l'API Cloud Trace
+#   gcloud services enable cloudtrace.googleapis.com --project=kube-train-project
+#
+#   # Vérifier que le compute SA a le rôle cloudtrace.agent
+#   # (en général déjà inclus si le SA a roles/editor par défaut)
+#   gcloud projects add-iam-policy-binding kube-train-project \
+#     --member="serviceAccount:399291708401-compute@developer.gserviceaccount.com" \
+#     --role="roles/cloudtrace.agent"
+#
+# Le collector utilise Application Default Credentials (ADC) via Workload Identity —
+# même mécanisme que le Cloud SQL Auth Proxy et le Pub/Sub client.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      memory_limiter:
+        limit_percentage: 75
+        check_interval: 1s
+      batch:
+        timeout: 5s
+        send_batch_size: 100
+
+    exporters:
+      googlecloud:
+        project: kube-train-project
+      debug:
+        verbosity: basic
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [googlecloud, debug]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  labels:
+    app: otel-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      containers:
+      - name: otel-collector
+        image: otel/opentelemetry-collector-contrib:0.100.0
+        args:
+          - "--config=/etc/otel/config.yaml"
+        ports:
+        - containerPort: 4317   # OTLP gRPC
+        - containerPort: 4318   # OTLP HTTP
+        volumeMounts:
+        - name: config
+          mountPath: /etc/otel
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+      volumes:
+      - name: config
+        configMap:
+          name: otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector-service
+spec:
+  selector:
+    app: otel-collector
+  ports:
+  - name: otlp-grpc
+    port: 4317
+    targetPort: 4317
+  - name: otlp-http
+    port: 4318
+    targetPort: 4318
+  type: ClusterIP

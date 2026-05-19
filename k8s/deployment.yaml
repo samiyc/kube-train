@@ -62,3 +62,6 @@ spec:
             secretKeyRef:
               name: kube-train-secrets
               key: API_KEY # La clé DANS le secret reste "API_KEY", c'est juste le nom de la variable qui change
+        # OTel désactivé en Minikube (pas de OTel Collector local)
+        - name: OTEL_TRACES_EXPORTER
+          value: "none"

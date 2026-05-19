@@ -164,6 +164,9 @@ jobs:
           sed "s|NOTIFICATION_IMAGE_PLACEHOLDER|${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}|g" \
             k8s/notification-deployment-gke.yaml | kubectl apply -f -
 
+          # Déployer l'OTel Collector (reçoit OTLP des pods → exporte vers Cloud Trace)
+          kubectl apply -f k8s/otel-collector.yaml
+
       - name: Vérifier le déploiement kube-train-api
         if: steps.cluster_check.outputs.exists == 'true'
         run: kubectl rollout status deployment/kube-train-deployment --timeout=5m

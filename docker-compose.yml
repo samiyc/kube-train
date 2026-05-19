@@ -3,14 +3,19 @@
 # Services :
 #   kafka    — Kafka KRaft (sans Zookeeper), port 9092
 #   postgres — PostgreSQL 15, port 5432 (profil Spring "postgres")
+#   jaeger   — Jaeger all-in-one, UI :16686, OTLP gRPC :4317 (observabilité locale J2)
 #
 # Usage :
 #   docker compose up -d            # Démarrer tous les services
 #   docker compose up -d kafka      # Démarrer Kafka uniquement
 #   docker compose up -d postgres   # Démarrer PostgreSQL uniquement
+#   docker compose up -d jaeger     # Démarrer Jaeger uniquement (traces locales)
 #   docker compose logs -f          # Voir les logs
 #   docker compose down             # Arrêter
 #   docker compose down -v          # Arrêter + supprimer les données
+
+volumes:
+  postgres-data:
 
 services:
   kafka:
@@ -46,5 +51,19 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
-volumes:
-  postgres-data:
+  # Jaeger all-in-one — collecteur de traces pour le développement local
+  # UI : http://localhost:16686
+  # OTLP gRPC : localhost:4317 (même port que le OTel Collector sur GKE)
+  # Usage : docker compose up -d jaeger
+  #         Lancer l'app avec : OTEL_SERVICE_NAME=kube-train-api \
+  #                             OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
+  #                             java -javaagent:opentelemetry-javaagent.jar -jar app.jar
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: jaeger-kube-train
+    ports:
+      - "16686:16686"   # UI Jaeger
+      - "4317:4317"     # OTLP gRPC (même port que OTel Collector GKE)
+      - "4318:4318"     # OTLP HTTP
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"

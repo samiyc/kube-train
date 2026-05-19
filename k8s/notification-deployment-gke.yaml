@@ -55,6 +55,15 @@ spec:
         # Logs JSON structurés (ECS format) — Cloud Logging parse automatiquement
         - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
           value: "ecs"
+        # OpenTelemetry — traces vers le OTel Collector (qui exporte vers Cloud Trace)
+        - name: OTEL_SERVICE_NAME
+          value: "train-notification-service"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector-service:4317"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "grpc"
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: "k8s.namespace.name=default,k8s.deployment.name=notification-deployment"
 
         # Le service n'expose pas d'endpoint public, mais les probes K8s
         # vérifient /actuator/health directement sur le pod.
