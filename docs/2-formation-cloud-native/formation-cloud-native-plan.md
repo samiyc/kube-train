@@ -224,7 +224,7 @@
 ### Après-midi — Consolidation & Discours
 
 4. **Mettre à jour les docs** :
-   - `deploy-kube-train-to-gcp.md` avec les nouvelles commandes
+   - `runbook.md` avec les nouvelles commandes
    - `readme.md` avec la nouvelle architecture (schéma)
    - Ajouter une Saison 6 dans la roadmap du README
 

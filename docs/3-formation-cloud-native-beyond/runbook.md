@@ -6,7 +6,7 @@
 > Git est la source de vérité unique. Quelqu'un qui clone ce repo doit pouvoir tout reconstruire
 > depuis un compte GCP vide.
 >
-> Voir aussi : `docs/2-formation-cloud-native/deploy-kube-train-to-gcp.md` pour le détail complet
+> Voir aussi : `docs/2-formation-cloud-native/runbook.md` pour le détail complet
 > de la Formation 2 (projet GCP, cluster GKE, HTTPS, Cloud SQL, CI/CD, Pub/Sub).
 
 ---
@@ -16,15 +16,15 @@
 Pour recréer l'infrastructure complète depuis un compte GCP vide :
 
 ```
-1. Projet GCP + APIs            → deploy-kube-train-to-gcp.md § "Init du projet GCP"
-2. Artifact Registry            → deploy-kube-train-to-gcp.md § "Configuration registry"
-3. GitHub Actions SA + Droits   → deploy-kube-train-to-gcp.md § "Github actions"
-4. Workload Identity Federation → deploy-kube-train-to-gcp.md § "Workload Identity Federation"
-5. GKE Cluster                  → deploy-kube-train-to-gcp.md § "Deployment vers GKE Autopilot"
-6. Cloud SQL                    → deploy-kube-train-to-gcp.md § "Cloud SQL / PostgreSQL"
-7. Secret Manager               → deploy-kube-train-to-gcp.md § "GCP Secret Manager"
+1. Projet GCP + APIs            → runbook.md (F2) § "Init du projet GCP"
+2. Artifact Registry            → runbook.md (F2) § "Configuration registry"
+3. GitHub Actions SA + Droits   → runbook.md (F2) § "Github actions"
+4. Workload Identity Federation → runbook.md (F2) § "Workload Identity Federation"
+5. GKE Cluster                  → runbook.md (F2) § "Deployment vers GKE Autopilot"
+6. Cloud SQL                    → runbook.md (F2) § "Cloud SQL / PostgreSQL"
+7. Secret Manager               → runbook.md (F2) § "GCP Secret Manager"
 8. Pub/Sub                      → ci-dessous § "Pub/Sub"
-9. HTTPS (nginx + cert-manager) → deploy-kube-train-to-gcp.md § "HTTPS sur GKE"
+9. HTTPS (nginx + cert-manager) → runbook.md (F2) § "HTTPS sur GKE"
 10. git push → CI/CD déploie tout automatiquement
 ```
 
