@@ -204,3 +204,197 @@ Le champ `payload TEXT` contient le `ReservationEvent` sérialisé — lisible d
 | body: vs matchers: dans les contrats | body = exemple concret pour le stub (valeur fixe) ; matchers = regex/pattern vérifié sur la vraie réponse du producer |
 | Pourquoi @Profile("postgres") sur OutboxPoller ? | L'outbox nécessite JPA + DataSource. En local/tests sans profil postgres, il n'y a pas de table outbox → le poller ne s'instancie pas |
 | Comment faire communiquer producer/consumer de contrats en CI ? | mvn install sur le producer génère le stubs JAR et l'installe en local. mvn test du consumer le consomme via StubRunner (StubsMode.LOCAL) |
+
+---
+
+## J2 — OpenTelemetry & Observabilité distribuée
+
+### Pourquoi OpenTelemetry ?
+
+Sans observabilité distribuée, impossible de répondre aux questions :
+- *Pourquoi la requête POST /reservations prend 1.2s ?* (DB ? Pub/Sub ? réseau ?)
+- *L'erreur vient de kube-train-api ou du notification-service ?*
+- *Combien de réservations sont créées par minute ?*
+
+**OpenTelemetry** (OTel) est le standard open-source pour collecter **traces**, **métriques** et **logs** de façon uniforme, vendor-agnostique.
+
+Les trois pilliers de l'observabilité :
+| Signal | Quoi | Exemple |
+|---|---|---|
+| **Traces** | Suivi d'une requête à travers plusieurs services | `POST /reservations` → SQL insert → outbox write |
+| **Métriques** | Données numériques agrégées | `reservations.created = 42`, latence P95 = 320ms |
+| **Logs** | Événements discrets horodatés | `[OUTBOX] Événement 5e567f47 traité` |
+
+---
+
+### OTel Java Agent — Instrumentation sans code
+
+L'approche **agent** est un fichier JAR (`opentelemetry-javaagent.jar`) qui s'attache au processus JVM au démarrage via `-javaagent`. Il instrumente automatiquement :
+
+- **HTTP** (Tomcat, Spring Web) → span pour chaque requête HTTP reçue ou émise
+- **JDBC/JPA** → span pour chaque requête SQL (`SELECT`, `INSERT`, etc.)
+- **Spring Scheduling** → span pour chaque tick du `@Scheduled` (OutboxPoller !)
+- **Kafka** → span producer + consumer, propagation `traceparent` dans les headers
+- **Micrometer** → exposition des métriques custom existantes (`reservations.created`)
+
+**Avantage principal** : zéro modification du code applicatif.
+
+```dockerfile
+# Dans le Dockerfile — build stage
+RUN wget -q -O /app/opentelemetry-javaagent.jar \
+    https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.4.0/opentelemetry-javaagent.jar
+
+# Run stage
+ENTRYPOINT ["java", "-javaagent:/app/opentelemetry-javaagent.jar", "-jar", "app.jar"]
+```
+
+**Variables d'environnement OTel clés** :
+```bash
+OTEL_SERVICE_NAME=kube-train-api           # nom du service dans les traces
+OTEL_EXPORTER_OTLP_ENDPOINT=http://...:4317 # où envoyer les données
+OTEL_EXPORTER_OTLP_PROTOCOL=grpc           # protocole de transport
+OTEL_TRACES_EXPORTER=none                  # désactiver sans reconstruire l'image
+```
+
+---
+
+### Architecture locale vs GKE
+
+```
+LOCAL (docker compose)                    GKE (production)
+──────────────────────                    ────────────────
+kube-train-api (mvnw)                     kube-train-api pod
+  └─ pas d'agent → pas de traces           └─ -javaagent actif
+                                              OTEL_EXPORTER_OTLP_ENDPOINT=
+kube-train-api (docker image)               http://otel-collector-service:4317
+  └─ -javaagent actif                            │
+     OTEL_EXPORTER_OTLP_ENDPOINT=               │ OTLP gRPC
+     http://localhost:4317                       ▼
+          │                              OTel Collector pod
+          │ OTLP gRPC                    (otel/opentelemetry-collector-contrib)
+          ▼                              ConfigMap : googlecloud exporter
+       Jaeger                                     │
+       (UI: localhost:16686)                      │ Cloud Trace API
+                                                  ▼
+                                         Cloud Trace (GCP Console)
+```
+
+---
+
+### OTel Collector — rôle et configuration
+
+Le **OTel Collector** est un proxy de télémétrie. Il reçoit des données OTLP (gRPC/HTTP), les traite, et les exporte vers une ou plusieurs destinations.
+
+**Pourquoi un Collector intermédiaire plutôt qu'un export direct ?**
+- Les apps n'ont pas besoin de connaître le backend (Cloud Trace, Jaeger, Datadog…)
+- Authentification centralisée (ADC/Workload Identity sur le Collector, pas sur chaque pod)
+- Buffer et retry en cas d'indisponibilité du backend
+- Possibilité de router vers plusieurs backends simultanément
+
+**Configuration du Collector (`k8s/otel-collector.yaml`)** :
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317    # reçoit des pods
+
+processors:
+  memory_limiter:                  # protection OOM
+    limit_percentage: 75
+  batch:                           # regroupe les spans avant envoi
+    timeout: 5s
+
+exporters:
+  googlecloud:                     # → Cloud Trace (via Workload Identity/ADC)
+    project: kube-train-project
+  debug:                           # → logs du pod (pour diagnostic)
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [googlecloud, debug]
+```
+
+**Prérequis GCP (une seule fois)** :
+```bash
+# Activer l'API Cloud Trace
+gcloud services enable cloudtrace.googleapis.com --project=kube-train-project
+
+# Vérifier / ajouter le rôle cloudtrace.agent sur le compute SA
+gcloud projects add-iam-policy-binding kube-train-project \
+  --member="serviceAccount:399291708401-compute@developer.gserviceaccount.com" \
+  --role="roles/cloudtrace.agent"
+```
+
+---
+
+### Trace distribuée — propagation W3C TraceContext
+
+Quand le kube-train-api reçoit une requête HTTP, l'agent crée un **Trace** (identifiant global unique) et un **Span** (opération individuelle). Chaque Span a :
+- un `traceId` (identifie la requête de bout en bout)
+- un `spanId` (identifie l'opération)
+- un `parentSpanId` (relie les spans entre eux)
+
+**Standard W3C TraceContext** : header HTTP `traceparent`:
+```
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+              version  traceId (128 bits)              spanId (64 bits) flags
+```
+
+L'agent injecte/lit ce header automatiquement sur les appels HTTP sortants et entrants.
+
+**Pour Kafka** : l'agent injecte le `traceparent` dans les headers du message → le consumer recrée un span enfant → trace bout-en-bout visible dans Cloud Trace.
+
+**Pour Pub/Sub** : la propagation automatique n'est pas incluse dans l'agent standard. Les spans kube-train-api et notification-service apparaissent séparément dans Cloud Trace (limitation connue de J2, à adresser en J5 si besoin).
+
+---
+
+### Metric custom `reservations.created`
+
+La métrique custom était **déjà en place** avant J2 via Micrometer dans `TrainService.java` :
+
+```java
+meterRegistry.counter("reservations.created", "train_id", train.id()).increment();
+```
+
+L'agent OTel exporte automatiquement les métriques Micrometer via OTLP. Dans Cloud Monitoring (GCP), la métrique apparaît sous `custom.googleapis.com/opencensus/reservations.created`.
+
+Pour voir les métriques en local via Actuator :
+```bash
+curl http://localhost:8080/actuator/metrics/reservations.created
+```
+
+---
+
+### Traces visibles dans Cloud Trace
+
+Après déploiement, chaque `POST /reservations` génère une trace avec :
+
+```
+▼ POST /reservations [kube-train-api]                 ~300ms
+  ├── SELECT kube_train.trains [JDBC]                  ~2ms
+  ├── INSERT kube_train.reservations [JDBC]            ~5ms
+  ├── INSERT kube_train.outbox_events [JDBC]           ~3ms
+  └── scheduling-1 [OutboxPoller - 5s plus tard]
+        ├── SELECT kube_train.outbox_events [JDBC]      ~2ms
+        ├── Pub/Sub publish [PubSubPublisher]           ~50ms
+        └── UPDATE kube_train.outbox_events [JDBC]      ~3ms
+```
+
+Navigation : GCP Console → Cloud Trace → Liste des traces → filtre `kube-train-api`
+
+---
+
+### Points clés entretien
+
+| Question | Réponse |
+|---|---|
+| Différence Agent OTel vs instrumentation SDK | Agent = zéro code, auto-instrument via JVM attach. SDK = code explicite, plus de contrôle mais plus de code à écrire |
+| Pourquoi OTel Collector plutôt qu'export direct ? | Centralise l'auth, découple les apps du backend, permet multi-export et retry |
+| W3C TraceContext : c'est quoi le traceparent ? | Header HTTP qui propage traceId + spanId entre services. Permet de reconstituer une trace distribuée même si les services tournent sur des pods différents |
+| Kafka vs Pub/Sub et OTel | Kafka : propagation `traceparent` automatique (header message). Pub/Sub : propagation manuelle via attributs message (non fait en J2) |
+| Comment désactiver OTel sans reconstruire l'image ? | `OTEL_TRACES_EXPORTER=none` (env var dans le manifest K8s → redémarrage pod) |
