@@ -64,6 +64,10 @@ spec:
           value: "grpc"
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: "k8s.namespace.name=default,k8s.deployment.name=notification-deployment"
+        - name: OTEL_METRICS_EXPORTER
+          value: "none"
+        - name: OTEL_LOGS_EXPORTER
+          value: "none"
 
         # Le service n'expose pas d'endpoint public, mais les probes K8s
         # vérifient /actuator/health directement sur le pod.
@@ -91,7 +95,7 @@ spec:
         resources:
           requests:
             cpu: "100m"
-            memory: "256Mi"
+            memory: "384Mi"
           limits:
             cpu: "500m"
-            memory: "512Mi"
+            memory: "640Mi"

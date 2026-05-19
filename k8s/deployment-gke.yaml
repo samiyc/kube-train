@@ -35,10 +35,10 @@ spec:
         resources:
           requests:
             cpu: "200m"     # Il réserve 0.2 CPU au démarrage
-            memory: "256Mi" # Il réserve 256 Mo de RAM
+            memory: "512Mi" # Spring Boot 4 + OTel Agent (~150MB) => ~450-500MB au démarrage
           limits:
             cpu: "500m"     # Il ne pourra jamais dépasser 0.5 CPU (sinon il est bridé)
-            memory: "512Mi" # S'il dépasse 512 Mo, Kubernetes le tue (OOMKilled)
+            memory: "768Mi" # 512Mi était trop juste avec l'agent OTel → OOMKilled
         
         # Attend que l'app soit démarrée avant d'activer liveness/readiness.
         # failureThreshold * periodSeconds = 30 * 5 = 150s max pour démarrer.
@@ -108,6 +108,12 @@ spec:
           value: "grpc"
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: "k8s.namespace.name=default,k8s.deployment.name=kube-train-deployment"
+        # L'agent exporte traces+metrics+logs par défaut mais le Collector n'a qu'un pipeline traces.
+        # Désactiver metrics/logs OTLP pour éviter les erreurs UNIMPLEMENTED toutes les 60s.
+        - name: OTEL_METRICS_EXPORTER
+          value: "none"
+        - name: OTEL_LOGS_EXPORTER
+          value: "none"
 
       # Sidecar Cloud SQL Auth Proxy
       # Intercepte les connexions JDBC sur 127.0.0.1:5432 et les route de façon sécurisée vers Cloud SQL.
