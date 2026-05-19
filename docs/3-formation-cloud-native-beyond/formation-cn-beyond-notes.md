@@ -219,6 +219,7 @@ Sans observabilité distribuée, impossible de répondre aux questions :
 **OpenTelemetry** (OTel) est le standard open-source pour collecter **traces**, **métriques** et **logs** de façon uniforme, vendor-agnostique.
 
 Les trois pilliers de l'observabilité :
+
 | Signal | Quoi | Exemple |
 |---|---|---|
 | **Traces** | Suivi d'une requête à travers plusieurs services | `POST /reservations` → SQL insert → outbox write |
@@ -266,17 +267,17 @@ LOCAL (docker compose)                    GKE (production)
 kube-train-api (mvnw)                     kube-train-api pod
   └─ pas d'agent → pas de traces           └─ -javaagent actif
                                               OTEL_EXPORTER_OTLP_ENDPOINT=
-kube-train-api (docker image)               http://otel-collector-service:4317
+kube-train-api (docker image)                 http://otel-collector-service:4317
   └─ -javaagent actif                            │
-     OTEL_EXPORTER_OTLP_ENDPOINT=               │ OTLP gRPC
+     OTEL_EXPORTER_OTLP_ENDPOINT=                │ OTLP gRPC
      http://localhost:4317                       ▼
-          │                              OTel Collector pod
-          │ OTLP gRPC                    (otel/opentelemetry-collector-contrib)
-          ▼                              ConfigMap : googlecloud exporter
-       Jaeger                                     │
-       (UI: localhost:16686)                      │ Cloud Trace API
-                                                  ▼
-                                         Cloud Trace (GCP Console)
+          │                               OTel Collector pod
+          │ OTLP gRPC                     (otel/opentelemetry-collector-contrib)
+          ▼                               ConfigMap : googlecloud exporter
+     Jaeger                                      │
+     (UI: localhost:16686)                       │ Cloud Trace API
+                                                 ▼
+                                          Cloud Trace (GCP Console)
 ```
 
 ---
@@ -297,7 +298,7 @@ receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: 0.0.0.0:4317    # reçoit des pods
+        endpoint: 0.0.0.0:4317     # reçoit des pods
 
 processors:
   memory_limiter:                  # protection OOM

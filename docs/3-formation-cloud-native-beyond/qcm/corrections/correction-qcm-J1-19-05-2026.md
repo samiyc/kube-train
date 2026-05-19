@@ -40,7 +40,7 @@ Bonne réponse sur le fond. Quelques précisions utiles pour un entretien :
 
 **Colonnes clés de `flyway_schema_history`** :
 ```
-installed_rank | version | description        | type | script              | checksum   | success
+installed_rank | version | description         | type | script              | checksum   | success
 1              | 1       | create reservations | SQL  | V1__create_...sql   | 1234567890 | true
 2              | 2       | grant privileges    | SQL  | V2__grant_...sql    | -987654321 | true
 3              | 3       | outbox table        | SQL  | V3__outbox_table.sql| 567890123  | true
