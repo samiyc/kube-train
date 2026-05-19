@@ -390,6 +390,70 @@ Navigation : GCP Console → Cloud Trace → Liste des traces → filtre `kube-t
 
 ---
 
+### Validation E2E sur GCP — Flame graph réelle (19/05/2026)
+
+Trace capturée dans Cloud Trace après un `POST /reservations` sur GKE Autopilot.
+TraceId : `9809bf57dbb2d0441ce355c53b57016e` | Durée totale : **25,093ms** | 9 spans
+
+#### Flame graph complète
+
+```
+POST /reservations [kube-train-api]                              25,093ms (total)
+│
+│ ← ~6s de gap = Cold start du Cloud SQL Auth Proxy
+│   (db-f1-micro qui se réveille après période d'inactivité)
+│
+├── ReservationRepository.save                                    3,808ms
+│   └── Session.merge com.kubetrain.api.entity.Reservation        3,311ms
+│       └── SELECT kube_train.reservations                        2,155ms
+│           ↑ Hibernate vérifie si l'entité existe avant d'écrire (merge = upsert)
+│
+├── OutboxEventRepository.save                                      745µs
+│   └── Session.persist com.kubetrain.api.entity.OutboxEvent        274µs
+│       ↑ persist = INSERT direct, pas de SELECT préalable
+│
+└── Transaction.commit                                               11ms
+    ├── INSERT kube_train.reservations                             2,43ms
+    └── INSERT kube_train.outbox_events                           2,277ms
+        ↑ Les 2 INSERTs dans la MÊME transaction = atomicité Outbox Pattern ✅
+```
+
+#### 3 insights clés de cette trace
+
+**Insight 1 — L'Outbox Pattern est littéralement visible**
+
+Les spans `INSERT kube_train.reservations` et `INSERT kube_train.outbox_events` sont tous deux **enfants du même `Transaction.commit`**. C'est la preuve visuelle de la garantie d'atomicité : si le processus crash entre les deux INSERTs, Hibernate rollback les deux. Jamais de réservation sans outbox, jamais d'outbox sans réservation.
+
+**Insight 2 — `Session.merge` vs `Session.persist` : 3,311ms vs 274µs**
+
+| Opération | Durée | Pourquoi |
+|---|---|---|
+| `ReservationRepository.save` (merge) | 3,808ms | Hibernate fait un `SELECT` avant d'écrire (upsert) |
+| `OutboxEventRepository.save` (persist) | 745µs | INSERT direct, pas de SELECT préalable |
+
+En prod, si `ReservationRepository.save` est lent, c'est le SELECT de merge à investiguer en premier. Solutions possibles : utiliser `saveAndFlush` avec `@GeneratedValue` bien configuré, ou confirmer qu'`OutboxEvent` utilise bien `persist` (entité toujours nouvelle, jamais de merge).
+
+**Insight 3 — Les 25 secondes : cold start db-f1-micro**
+
+La requête totale prend 25s, dont ~6s de gap avant les opérations DB. C'est le Cloud SQL Auth Proxy qui établit sa **première connexion** après une période d'inactivité (l'instance `db-f1-micro` est la plus petite, très lente à établir les connexions initiales). Sur les requêtes suivantes, ce gap disparaît → ~300ms total.
+
+En prod réelle, on configurerait un **connection pool warmup** ou une instance Cloud SQL de taille supérieure (`db-g1-small` minimum pour prod).
+
+#### Ce qu'on voit dans le Collector
+
+```
+2026-05-19T14:22:19.533Z   TracesExporter   resource spans: 1, spans: 119
+2026-05-19T14:22:24.533Z   TracesExporter   resource spans: 1, spans: 5
+2026-05-19T14:22:29.534Z   TracesExporter   resource spans: 2, spans: 58
+```
+
+- `resource spans: 1` → un seul service envoie des spans (kube-train-api seul actif)
+- `resource spans: 2` → les deux services envoient (kube-train-api + train-notification-service)
+- `spans: 119` → pic au démarrage (tous les spans d'initialisation JVM + Spring flushed d'un coup)
+- `spans: 5-15` → régime normal (health probes + outbox polling toutes les 5s)
+
+---
+
 ### Points clés entretien
 
 | Question | Réponse |
