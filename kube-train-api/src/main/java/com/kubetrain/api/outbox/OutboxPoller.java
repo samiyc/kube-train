@@ -56,29 +56,22 @@ public class OutboxPoller {
     public void processPendingEvents() {
         List<OutboxEvent> pending = outboxEventRepository.findByStatusOrderByCreatedAtAsc("PENDING");
         if (pending.isEmpty()) return;
-
         log.debug("[OUTBOX] {} événement(s) en attente de publication", pending.size());
+        pending.forEach(this::processEvent);
+    }
 
-        for (OutboxEvent outboxEvent : pending) {
-            try {
-                ReservationEvent reservationEvent = objectMapper.readValue(
-                        outboxEvent.getPayload(), ReservationEvent.class);
-
-                // Publication sur Kafka ou Pub/Sub (at-least-once : publish before marking)
-                eventPublisher.publish(reservationEvent);
-
-                outboxEvent.setStatus("PROCESSED");
-                outboxEvent.setProcessedAt(Instant.now());
-                outboxEventRepository.save(outboxEvent);
-
-                log.info("[OUTBOX] Événement {} traité — reservationId={}",
-                        outboxEvent.getId(), outboxEvent.getAggregateId());
-
-            } catch (Exception e) {
-                // Reste PENDING → retry au prochain cycle
-                log.error("[OUTBOX] Échec publication événement {} (reservationId={}) : {}",
-                        outboxEvent.getId(), outboxEvent.getAggregateId(), e.getMessage());
-            }
+    private void processEvent(OutboxEvent outboxEvent) {
+        try {
+            ReservationEvent event = objectMapper.readValue(outboxEvent.getPayload(), ReservationEvent.class);
+            eventPublisher.publish(event);
+            outboxEvent.setStatus("PROCESSED");
+            outboxEvent.setProcessedAt(Instant.now());
+            outboxEventRepository.save(outboxEvent);
+            log.info("[OUTBOX] Événement {} traité — reservationId={}", outboxEvent.getId(), outboxEvent.getAggregateId());
+        } catch (Exception e) {
+            // Reste PENDING → retry au prochain cycle
+            log.error("[OUTBOX] Échec publication événement {} (reservationId={}) : {}",
+                    outboxEvent.getId(), outboxEvent.getAggregateId(), e.getMessage());
         }
     }
 }

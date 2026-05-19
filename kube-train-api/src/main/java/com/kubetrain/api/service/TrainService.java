@@ -91,12 +91,41 @@ public class TrainService {
     @Transactional
     public ReservationResponse createReservation(CreateReservationRequest request) {
         TrainResponse train = getTrainById(request.trainId());
-
         String reservationId = "RES-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         Instant departureTime = Instant.now().plus(2, ChronoUnit.HOURS);
         String wagon = "Wagon " + (int) (Math.random() * 12 + 1);
 
-        ReservationResponse response = ReservationResponse.builder()
+        ReservationEvent event = buildEvent(reservationId, train, request.passengerName());
+        ReservationResponse response = buildResponse(reservationId, train, wagon, departureTime);
+
+        if (reservationRepository != null) {
+            reservationRepository.save(toEntity(reservationId, train, request.passengerName(), wagon, departureTime));
+            log.info("Réservation {} persistée en Cloud SQL (train={}, passager={})",
+                    reservationId, train.id(), request.passengerName());
+            enqueueEvent(event, reservationId);
+        } else {
+            reservations.put(reservationId, response);
+            log.debug("Réservation {} stockée en mémoire (profil default)", reservationId);
+            eventPublisher.publish(event);
+        }
+
+        meterRegistry.counter("reservations.created", "train_id", train.id()).increment();
+        return response;
+    }
+
+    private ReservationEvent buildEvent(String reservationId, TrainResponse train, String passengerName) {
+        return ReservationEvent.builder()
+                .eventId(UUID.randomUUID().toString())
+                .reservationId(reservationId)
+                .trainId(train.id())
+                .passengerName(passengerName)
+                .price(train.price())
+                .createdAt(Instant.now())
+                .build();
+    }
+
+    private ReservationResponse buildResponse(String reservationId, TrainResponse train, String wagon, Instant departureTime) {
+        return ReservationResponse.builder()
                 .reservationId(reservationId)
                 .status("CONFIRMED")
                 .trainId(train.id())
@@ -104,63 +133,40 @@ public class TrainService {
                 .departureTime(departureTime)
                 .price(train.price())
                 .build();
+    }
 
-        // Événement à publier (construit une seule fois, utilisé selon la stratégie active)
-        ReservationEvent event = ReservationEvent.builder()
-                .eventId(UUID.randomUUID().toString())
+    private Reservation toEntity(String reservationId, TrainResponse train, String passengerName, String wagon, Instant departureTime) {
+        return Reservation.builder()
                 .reservationId(reservationId)
+                .status("CONFIRMED")
                 .trainId(train.id())
-                .passengerName(request.passengerName())
+                .wagon(wagon)
+                .departureTime(departureTime)
                 .price(train.price())
+                .passengerName(passengerName)
                 .createdAt(Instant.now())
                 .build();
+    }
 
-        if (reservationRepository != null) {
-            // Profil "postgres" : persistance en base de données
-            reservationRepository.save(Reservation.builder()
-                    .reservationId(reservationId)
-                    .status("CONFIRMED")
-                    .trainId(train.id())
-                    .wagon(wagon)
-                    .departureTime(departureTime)
-                    .price(train.price())
-                    .passengerName(request.passengerName())
+    /** Écrit dans l'outbox (profil postgres) ou publie directement (fallback). */
+    private void enqueueEvent(ReservationEvent event, String reservationId) {
+        if (outboxEventRepository == null) {
+            eventPublisher.publish(event);
+            return;
+        }
+        try {
+            outboxEventRepository.save(OutboxEvent.builder()
+                    .aggregateId(reservationId)
+                    .eventType("ReservationCreated")
+                    .payload(objectMapper.writeValueAsString(event))
+                    .status("PENDING")
                     .createdAt(Instant.now())
                     .build());
-            log.info("Réservation {} persistée en Cloud SQL (train={}, passager={})",
-                    reservationId, train.id(), request.passengerName());
-
-            if (outboxEventRepository != null) {
-                // 🎯 Outbox Pattern : écriture dans la même transaction que la réservation.
-                // OutboxPoller publiera l'événement de manière asynchrone.
-                try {
-                    outboxEventRepository.save(OutboxEvent.builder()
-                            .aggregateId(reservationId)
-                            .eventType("ReservationCreated")
-                            .payload(objectMapper.writeValueAsString(event))
-                            .status("PENDING")
-                            .createdAt(Instant.now())
-                            .build());
-                    log.debug("[OUTBOX] Événement {} enregistré pour la réservation {}", event.eventId(), reservationId);
-                } catch (Exception e) {
-                    log.error("[OUTBOX] Impossible de sérialiser l'événement pour {} : {}", reservationId, e.getMessage());
-                    throw new RuntimeException("Échec écriture outbox pour " + reservationId, e);
-                }
-            } else {
-                // Fallback : publication directe si outboxEventRepository non disponible
-                eventPublisher.publish(event);
-            }
-        } else {
-            // Profil "default" : stockage en mémoire + publication directe (local/tests)
-            reservations.put(reservationId, response);
-            log.debug("Réservation {} stockée en mémoire (profil default)", reservationId);
-            eventPublisher.publish(event);
+            log.debug("[OUTBOX] Événement {} enregistré pour la réservation {}", event.eventId(), reservationId);
+        } catch (Exception e) {
+            log.error("[OUTBOX] Impossible de sérialiser l'événement pour {} : {}", reservationId, e.getMessage());
+            throw new RuntimeException("Échec écriture outbox pour " + reservationId, e);
         }
-
-        // 🎯 Micrometer counter — incrémenté à chaque réservation créée
-        meterRegistry.counter("reservations.created", "train_id", train.id()).increment();
-
-        return response;
     }
 
     public ReservationResponse getReservation(String reservationId) {
