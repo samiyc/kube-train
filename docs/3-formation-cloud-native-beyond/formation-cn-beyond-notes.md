@@ -117,6 +117,84 @@ mvn install
 
 ---
 
+---
+
+### Validation E2E sur GCP — Trace complète (19/05/2026)
+
+Exemple concret issu des logs Cloud Logging après un `POST /reservations` sur GKE Autopilot.
+
+#### Timeline
+
+```
+09:39:58.094Z  [http-nio-8080-exec-5]  TrainService
+               → Réservation RES-997D2CB0 persistée en Cloud SQL
+               → outbox_events inséré : status=PENDING         ← même transaction SQL
+
+09:39:58.277Z  [http-nio-8080-exec-5]  TrainController
+               → "Réservation créée — id=RES-997D2CB0, wagon=Wagon 4"
+               → 201 retourné au client                        ← ~180ms après le POST
+                                                                  Pub/Sub pas encore touché !
+               ┄┄┄┄┄ thread HTTP libéré ┄┄┄┄┄
+
+09:40:03.921Z  [scheduling-1]          PubSubReservationEventPublisher
+               → "[PUBSUB-PUBLISHER] Event publié — messageId=19111267208315942"
+
+09:40:03.923Z  [scheduling-1]          OutboxPoller
+               → "[OUTBOX] Événement 5e567f47... traité — reservationId=RES-997D2CB0"
+               → outbox_events mis à jour : status=PROCESSED   ← +5.6s après HTTP response
+
+09:40:06.786Z  [Gax-1]                 PubSubReservationEventConsumer (notification-service)
+               → "Notification reçue — Réservation RES-997D2CB0 pour TGV-7042"
+```
+
+#### État de la table `outbox_events` (Cloud SQL Studio)
+
+Juste après le POST (`09:39:58`) :
+```json
+{
+  "id": "5e567f47-7912-47a3-9611-3562d405ba8b",
+  "aggregate_id": "RES-997D2CB0",
+  "event_type": "ReservationCreated",
+  "status": "PENDING",
+  "processed_at": "",
+  "payload": "{\"eventId\":\"f4163f95-...\",\"reservationId\":\"RES-997D2CB0\",\"trainId\":\"TGV-7042\",\"passengerName\":\"Jean Dupont\",\"price\":29.90}"
+}
+```
+
+5 secondes plus tard (`09:40:03`) :
+```json
+{
+  "status": "PROCESSED",
+  "processed_at": "2026-05-19T09:40:03.922384Z"
+}
+```
+
+#### Ce que cette trace prouve
+
+| Observation | Signification |
+|---|---|
+| Thread HTTP (`exec-5`) ≠ thread scheduler (`scheduling-1`) | Découplage total — le client ne subit pas la latence Pub/Sub |
+| 201 retourné à `09:39:58.277Z`, Pub/Sub publié à `09:40:03.921Z` | +5.6s d'écart → le client n'attend pas la publication |
+| Pub/Sub publié à `09:40:03.921Z`, PROCESSED à `09:40:03.923Z` | Ordre at-least-once respecté : publish **avant** marquage PROCESSED |
+| Notification reçue à `09:40:06.786Z` | **8.5s** après la réponse HTTP, sans aucun impact côté client |
+| `processed_at` = `09:40:03.922Z` soit `created_at + 5.8s` | Conforme au `fixedDelay=5000ms` de l'OutboxPoller (+ latence Cloud SQL) |
+
+#### Payload JSON stocké en base
+
+Le champ `payload TEXT` contient le `ReservationEvent` sérialisé — lisible directement depuis Cloud SQL Studio :
+```json
+{
+  "eventId": "f4163f95-b95a-4640-a3bb-b039a75aeaf4",
+  "reservationId": "RES-997D2CB0",
+  "trainId": "TGV-7042",
+  "passengerName": "Jean Dupont",
+  "price": 29.90,
+  "createdAt": "2026-05-19T09:39:57.930Z"
+}
+```
+
+---
+
 ### Points clés entretien
 
 | Question | Réponse |
