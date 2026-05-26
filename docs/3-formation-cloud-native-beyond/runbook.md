@@ -25,7 +25,8 @@ Pour recréer l'infrastructure complète depuis un compte GCP vide :
 7. Secret Manager               → runbook.md (F2) § "GCP Secret Manager"
 8. Pub/Sub                      → ci-dessous § "Pub/Sub"
 9. HTTPS (nginx + cert-manager) → runbook.md (F2) § "HTTPS sur GKE"
-10. git push → CI/CD déploie tout automatiquement
+10. ArgoCD (optionnel, F3-J3)   → ci-dessous § "F3-J3: ArgoCD & GitOps"
+11. git push → CI/CD build + commit tags → ArgoCD sync auto
 ```
 
 ---
@@ -122,10 +123,45 @@ kubectl logs -f deployment/otel-collector
 
 ### F3-J3: ArgoCD & GitOps
 ```bash
-# À compléter lors de J3
-# Installation ArgoCD sur GKE :
-# kubectl create namespace argocd
-# kubectl apply -n argocd -f https://raw.githubusercontent.com/.../install.yaml
+# ─── Installation ArgoCD sur GKE (une seule fois) ───
+
+# 1. Créer le namespace et installer ArgoCD (manifests officiels)
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# 2. Attendre que tous les pods ArgoCD soient Ready (~2-3 min sur Autopilot)
+kubectl wait --for=condition=available deployment -l app.kubernetes.io/part-of=argocd -n argocd --timeout=300s
+kubectl get pods -n argocd
+
+# 3. Récupérer le mot de passe admin initial
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+# Username: admin
+
+# 4. Exposer l'UI ArgoCD via port-forward (accès local)
+kubectl port-forward svc/argocd-server -n argocd 8443:443
+# → Ouvrir https://localhost:8443
+
+# 5. Appliquer l'Application (déclenche le premier sync)
+kubectl apply -f k8s/argocd/application.yaml
+
+# ─── CLI ArgoCD (optionnel, pour rollback/debug) ───
+
+# Installer la CLI : https://argo-cd.readthedocs.io/en/stable/cli_installation/
+# Login :
+argocd login localhost:8443 --username admin --password <password> --insecure
+
+# Vérifier l'état de l'app :
+argocd app get kube-train
+argocd app diff kube-train          # voir le diff Git ↔ cluster
+argocd app sync kube-train          # sync manuel si besoin
+argocd app history kube-train       # historique des déploiements
+argocd app rollback kube-train <id> # rollback à un déploiement précédent
+
+# ─── Suppression ArgoCD (économie de crédits post-J3) ───
+kubectl delete -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl delete namespace argocd
+# ⚠️ Après suppression, les déploiements continuent de tourner (ArgoCD ne détruit pas les apps)
+# Mais il n'y a plus de self-heal ni de sync auto → revenir au modèle push si besoin
 ```
 
 ### F3-J4: Sécurité (OAuth2, NetworkPolicies, Trivy)

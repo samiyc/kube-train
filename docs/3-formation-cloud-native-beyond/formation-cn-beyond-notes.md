@@ -463,3 +463,167 @@ En prod réelle, on configurerait un **connection pool warmup** ou une instance 
 | W3C TraceContext : c'est quoi le traceparent ? | Header HTTP qui propage traceId + spanId entre services. Permet de reconstituer une trace distribuée même si les services tournent sur des pods différents |
 | Kafka vs Pub/Sub et OTel | Kafka : propagation `traceparent` automatique (header message). Pub/Sub : propagation manuelle via attributs message (non fait en J2) |
 | Comment désactiver OTel sans reconstruire l'image ? | `OTEL_TRACES_EXPORTER=none` (env var dans le manifest K8s → redémarrage pod) |
+
+---
+
+## J3 — ArgoCD & GitOps
+
+### Le problème du Push-based deployment
+
+**Avant ArgoCD (modèle Push)** : la CI fait `kubectl apply` directement sur le cluster.
+
+```
+Développeur → git push → GitHub Actions → kubectl apply → Cluster GKE
+                                          ↑
+                              La CI a les credentials du cluster
+                              La CI POUSSE les changements
+```
+
+**Problèmes du modèle Push** :
+- La CI a un accès `cluster-admin` (surface d'attaque)
+- Si quelqu'un modifie un manifest via `kubectl edit` → drift silencieux (pas de source de vérité)
+- Pas de rollback automatique
+- L'état du cluster n'est visible que depuis le cluster lui-même
+
+---
+
+### ArgoCD — le modèle Pull (GitOps)
+
+**Principe GitOps** : Git est la **seule source de vérité** pour l'état du cluster. Un opérateur (ArgoCD) tourne DANS le cluster, surveille le repo Git, et applique les différences.
+
+```
+Développeur → git push → GitHub Actions → Build image + commit tag → Git (manifests)
+                                                                          │
+                                                                     ArgoCD (dans le cluster)
+                                                                          │ pull (surveille)
+                                                                          ▼
+                                                                     Cluster GKE
+```
+
+**Avantages** :
+- **CI sans credentials kubectl** — la CI ne fait que build + push image + commit
+- **Self-healing** — si quelqu'un fait un `kubectl edit`, ArgoCD revient à l'état Git
+- **Audit complet** — tout changement est un commit Git (qui, quand, quoi)
+- **Rollback = git revert** — pas besoin de re-déployer, ArgoCD sync l'ancien état
+
+---
+
+### Architecture ArgoCD dans kube-train
+
+```
+┌────────────────────────────────────────────────────────┐
+│  GitHub Actions CI (ne touche PLUS au cluster)         │
+│                                                        │
+│  1. mvn test (les deux services)                       │
+│  2. docker build + push → Artifact Registry            │
+│  3. sed -i "image: ...:<sha>" → git commit [skip ci]  │
+└────────────────┬───────────────────────────────────────┘
+                 │ commit image tags
+                 ▼
+┌────────────────────────────────────────────────────────┐
+│  GitHub repo samiyc/kube-train (branche main)          │
+│  └── k8s/                                              │
+│      ├── deployment-gke.yaml  (image tag = SHA réel)   │
+│      ├── notification-deployment-gke.yaml              │
+│      ├── configmap.yaml, service.yaml, hpa.yaml        │
+│      └── otel-collector.yaml                           │
+└────────────────┬───────────────────────────────────────┘
+                 │ poll toutes les 3 min (ou webhook)
+                 ▼
+┌────────────────────────────────────────────────────────┐
+│  ArgoCD (namespace argocd, DANS le cluster GKE)        │
+│                                                        │
+│  • Détecte le diff Git ↔ état réel du cluster          │
+│  • Apply automatique (syncPolicy.automated)            │
+│  • Self-heal si drift                                  │
+│  • Prune si resource supprimée de Git                  │
+└────────────────┬───────────────────────────────────────┘
+                 │ kubectl apply (interne)
+                 ▼
+┌────────────────────────────────────────────────────────┐
+│  Cluster GKE Autopilot                                 │
+│  ├── kube-train-deployment (2/2 Running)               │
+│  ├── notification-deployment (1/1 Running)             │
+│  └── otel-collector (1/1 Running)                      │
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Composants ArgoCD
+
+| Composant | Rôle |
+|---|---|
+| `argocd-server` | UI web + API REST (le dashboard) |
+| `argocd-repo-server` | Clone le repo Git, génère les manifests (Helm/Kustomize/plain YAML) |
+| `argocd-application-controller` | Compare l'état Git vs cluster, déclenche les syncs |
+| `argocd-redis` | Cache interne |
+| `argocd-dex-server` | SSO/OAuth (optionnel) |
+
+⚠️ Sur GKE Autopilot, ArgoCD consomme ~3 pods supplémentaires. Supprimer après J3 pour économiser les crédits.
+
+---
+
+### Application manifest (`k8s/argocd/application.yaml`)
+
+```yaml
+spec:
+  source:
+    repoURL: https://github.com/samiyc/kube-train.git
+    path: k8s
+    directory:
+      include: '{deployment-gke.yaml,notification-deployment-gke.yaml,...}'
+  syncPolicy:
+    automated:
+      selfHeal: true   # Corrige les drifts kubectl edit
+      prune: true      # Supprime les ressources absentes de Git
+```
+
+**`selfHeal`** : si un dev fait `kubectl scale deployment/kube-train-deployment --replicas=5`, ArgoCD revient à la valeur dans Git (1 replica). Git gagne TOUJOURS.
+
+**`prune`** : si tu supprimes `otel-collector.yaml` de Git et push → ArgoCD supprime le Deployment OTel du cluster.
+
+---
+
+### Migration Push → Pull (stratégie progressive)
+
+La migration est faite en 3 étapes (pas de big bang) :
+
+| Étape | CI fait... | ArgoCD fait... |
+|---|---|---|
+| **1. Actuelle** (hybride) | Build + push + kubectl apply + commit tags | Observe (pas encore installé) |
+| **2. ArgoCD actif** | Build + push + commit tags | Sync auto depuis Git |
+| **3. CI nettoyée** | Build + push + commit tags (kubectl supprimé) | Sync auto (source de vérité unique) |
+
+On est à l'étape 1 après ce commit. Demain → étape 2 (install ArgoCD) → valider → étape 3 (retirer kubectl).
+
+---
+
+### Éviter la boucle infinie CI
+
+Problème : CI commit les tags → push → déclenche une nouvelle CI → commit → ...
+
+**Solution** : `paths-ignore` dans le trigger du workflow :
+```yaml
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/deployment-gke.yaml'
+      - '**/notification-deployment-gke.yaml'
+```
+
+Si le seul fichier modifié est un deployment YAML → la CI ne se déclenche PAS.
+
+---
+
+### Points clés entretien
+
+| Question | Réponse |
+|---|---|
+| GitOps vs CI/CD classique ? | GitOps = Git est la source de vérité, opérateur pull-based dans le cluster. CI/CD classique = push-based, la CI a les credentials. |
+| Self-heal ArgoCD : c'est quoi ? | Si l'état du cluster diverge de Git (ex: kubectl edit), ArgoCD revient automatiquement à l'état Git. |
+| Comment rollback avec ArgoCD ? | `git revert <commit>` → push → ArgoCD sync l'ancien état. Pas besoin de re-build ni de credentials kubectl. |
+| ArgoCD vs Flux ? | Les deux sont CNCF. ArgoCD = UI riche, Application CRD. Flux = plus léger, GitRepository/Kustomization CRDs. |
+| Pourquoi `[skip ci]` dans le commit de tag ? | Évite la boucle infinie : CI commit → push → trigger CI → commit → ... |
+| Que se passe-t-il si ArgoCD est down ? | Le cluster continue de tourner (rien ne change). Au redémarrage, ArgoCD resynchronise le diff accumulé. |

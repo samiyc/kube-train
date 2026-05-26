@@ -3,6 +3,10 @@ name: CI/CD — Build & Deploy to GKE
 on:
   push:
     branches: [main]
+    # Ignore les commits de mise à jour de tags (évite boucle infinie CI → commit → CI)
+    paths-ignore:
+      - '**/deployment-gke.yaml'
+      - '**/notification-deployment-gke.yaml'
 
 # Empêche deux déploiements en parallèle (le second attend la fin du premier)
 concurrency:
@@ -10,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write  # Requis pour le commit des image tags (GitOps)
   id-token: write  # Requis pour Workload Identity Federation
 
 env:
@@ -196,3 +200,49 @@ jobs:
           echo "Host nip.io : api.${INGRESS_IP}.nip.io"
           sed "s|NIP_IO_HOST_PLACEHOLDER|api.${INGRESS_IP}.nip.io|g" \
             k8s/ingress-gke.yaml | kubectl apply -f -
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # GitOps — Commit les image tags dans les manifests
+  # ArgoCD détecte le changement et synchronise le cluster automatiquement.
+  # Ce job remplacera le job "deploy" une fois ArgoCD actif (migration progressive).
+  # ─────────────────────────────────────────────────────────────────────────────
+  update-manifests:
+    name: GitOps — Commit image tags
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Token par défaut pour push (permissions: contents: write)
+          token: ${{ github.token }}
+
+      - name: Mettre à jour les tags d'image dans les manifests
+        run: |
+          # deployment-gke.yaml : remplace le placeholder OU l'ancien tag
+          sed -i "s|image: IMAGE_TAG_PLACEHOLDER|image: ${{ env.IMAGE }}:${{ github.sha }}|g" \
+            k8s/deployment-gke.yaml
+          sed -i "s|image: ${{ env.IMAGE }}:.*|image: ${{ env.IMAGE }}:${{ github.sha }}|g" \
+            k8s/deployment-gke.yaml
+
+          # notification-deployment-gke.yaml : idem
+          sed -i "s|image: NOTIFICATION_IMAGE_PLACEHOLDER|image: ${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}|g" \
+            k8s/notification-deployment-gke.yaml
+          sed -i "s|image: ${{ env.IMAGE_NOTIFICATION }}:.*|image: ${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}|g" \
+            k8s/notification-deployment-gke.yaml
+
+          echo "✅ Tags mis à jour → ${{ github.sha }}"
+
+      - name: Commit et push (GitOps)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/deployment-gke.yaml k8s/notification-deployment-gke.yaml
+          # Ne commit que s'il y a un diff (première fois ou tag différent)
+          if git diff --cached --quiet; then
+            echo "ℹ️ Aucun changement de tag — skip commit"
+          else
+            git commit -m "chore: update image tags to ${{ github.sha }} [skip ci]"
+            git push
+            echo "✅ Manifests committés → ArgoCD va synchroniser"
+          fi

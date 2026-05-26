@@ -1,0 +1,49 @@
+# ArgoCD Application — synchronise k8s/ vers GKE
+#
+# Prérequis : ArgoCD installé sur le cluster (voir runbook.md §J3)
+# Ce manifest est appliqué UNE FOIS manuellement :
+#   kubectl apply -f k8s/argocd/application.yaml
+#
+# Ensuite, ArgoCD détecte les changements dans k8s/ et les applique automatiquement.
+# La CI ne fait plus de "kubectl apply" → modèle GitOps (pull vs push).
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-train
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/samiyc/kube-train.git
+    targetRevision: main
+    path: k8s
+    directory:
+      recurse: false
+      # Sélection des manifests GKE uniquement (exclut les fichiers Minikube/Postgres local)
+      include: '{deployment-gke.yaml,notification-deployment-gke.yaml,configmap.yaml,service.yaml,hpa.yaml,otel-collector.yaml,ingress-gke.yaml}'
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+
+  syncPolicy:
+    automated:
+      # Auto-sync : ArgoCD applique les changements dès qu'il détecte un diff Git ↔ cluster
+      selfHeal: true   # Si quelqu'un modifie un manifest via kubectl → ArgoCD revient à l'état Git
+      prune: true      # Supprime les ressources K8s qui n'existent plus dans Git
+
+    syncOptions:
+      - CreateNamespace=false
+      - ApplyOutOfSyncOnly=true  # N'applique que les ressources qui ont changé (plus rapide)
+
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  # Health checks — ArgoCD vérifie que les Deployments sont Healthy après sync
+  # (déjà géré par défaut pour les resources K8s standard)
