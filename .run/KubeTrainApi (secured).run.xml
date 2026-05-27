@@ -7,8 +7,8 @@
     <!--   username=testuser, password=test123                                                     -->
     <option name="SPRING_BOOT_MAIN_CLASS" value="com.kubetrain.api.KubeTrainApiApplication" />
     <module name="kube-train-api" />
-    <option name="SPRING_BOOT_ACTIVE_PROFILES" value="postgres,secured" />
     <envs>
+      <env name="SPRING_PROFILES_ACTIVE" value="postgres,secured" />
       <env name="KAFKA_ENABLED" value="true" />
       <!-- En local : valeur libre, utilisée par /secure via X-API-KEY header -->
       <env name="TRAIN_API_KEY" value="dev-key" />

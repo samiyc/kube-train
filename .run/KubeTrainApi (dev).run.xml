@@ -4,8 +4,8 @@
     <!-- Utile pour dev rapide sans Keycloak                                      -->
     <option name="SPRING_BOOT_MAIN_CLASS" value="com.kubetrain.api.KubeTrainApiApplication" />
     <module name="kube-train-api" />
-    <option name="SPRING_BOOT_ACTIVE_PROFILES" value="postgres" />
     <envs>
+      <env name="SPRING_PROFILES_ACTIVE" value="postgres" />
       <env name="KAFKA_ENABLED" value="true" />
       <!-- En local : valeur libre, utilisée par /secure via X-API-KEY header -->
       <env name="TRAIN_API_KEY" value="dev-key" />
