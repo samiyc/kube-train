@@ -118,31 +118,48 @@ docker compose up -d
 #   - Keycloak     : localhost:8180  (admin/admin, realm kube-train auto-importé)
 #   - Jaeger UI    : localhost:16686
 
-# --- Lancement via IntelliJ ---
-# kube-train-api        → port 8080 (profils : postgres ou postgres,secured)
-# notification-service  → port 8081 (avec KAFKA_ENABLED=true)
-#
-# Run Configurations IntelliJ :
-#   Active profiles : postgres              (sans auth, dev rapide)
-#   Active profiles : postgres,secured      (avec OAuth2 Keycloak)
-#   Environment    : KAFKA_ENABLED=true     (active le consumer Kafka)
-
-# --- Lancement via Maven (WSL) ---
-cd kube-train-api
-SPRING_PROFILES_ACTIVE=postgres KAFKA_ENABLED=true ./mvnw spring-boot:run
-# Dans un autre terminal :
-cd train-notification-service
-SPRING_PROFILES_ACTIVE=default KAFKA_ENABLED=true ./mvnw spring-boot:run -Dspring-boot.run.arguments="--server.port=8081"
+# --- Lancement via IntelliJ (recommandé) ---
+# Configs disponibles dans .run/ (auto-détectées par IntelliJ) :
+#   KubeTrainApi (dev)      : profil postgres, KAFKA_ENABLED=true, TRAIN_API_KEY=dev-key
+#   KubeTrainApi (secured)  : profil postgres+secured (OAuth2 Keycloak), TRAIN_API_KEY=dev-key
+#   NotificationService     : pas de profil, Kafka toujours actif → port 8081
 
 # --- Port-forward Minikube (si app déployée dans Minikube) ---
 kubectl config use-context minikube
 kubectl port-forward service/kube-train-service 8080:80
+# ⚠️ N'utilise PAS le port-forward en même temps qu'IntelliJ sur le même port 8080
+#    → curl depuis WSL irait sur GKE, pas sur l'app locale
 
-# --- Test rapide OAuth2 (profil secured) ---
+# --- Tests OAuth2 — PowerShell (Windows) ---
+# Obtenir un token JWT
+$resp = Invoke-RestMethod -Method POST `
+  -Uri "http://localhost:8180/realms/kube-train/protocol/openid-connect/token" `
+  -Body "grant_type=password&client_id=kube-train-api&client_secret=kube-train-secret&username=testuser&password=test123"
+$token = $resp.access_token
+
+# Endpoints publics (sans token)
+Invoke-RestMethod -Uri "http://localhost:8080/trains"
+Invoke-RestMethod -Uri "http://localhost:8080/"
+
+# GET /secure (JWT + X-API-KEY requis)
+Invoke-RestMethod -Uri "http://localhost:8080/secure" `
+  -Headers @{"Authorization"="Bearer $token"; "X-API-KEY"="dev-key"}
+
+# POST /reservations (JWT requis avec profil secured)
+Invoke-RestMethod -Method POST -Uri "http://localhost:8080/reservations" `
+  -Headers @{"Authorization"="Bearer $token"; "Content-Type"="application/json"} `
+  -Body '{"passengerName":"Jean Dupont","trainId":"TGV-7042"}'
+
+# Décoder le payload JWT (voir sub, exp, preferred_username)
+$payload = $token.Split('.')[1]
+$padded = $payload + ('=' * ((4 - $payload.Length % 4) % 4))
+[System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($padded)) | ConvertFrom-Json
+
+# --- Tests — WSL/bash (si port-forward désactivé, app tournant dans IntelliJ) ---
 TOKEN=$(curl -s -X POST http://localhost:8180/realms/kube-train/protocol/openid-connect/token \
   -d "grant_type=password&client_id=kube-train-api&client_secret=kube-train-secret&username=testuser&password=test123" \
   | jq -r .access_token)
-curl http://localhost:8080/secure -H "Authorization: Bearer $TOKEN"
+curl http://localhost:8080/secure -H "Authorization: Bearer $TOKEN" -H "X-API-KEY: dev-key"
 
 # --- Arrêter ---
 docker compose down          # arrêter tous les services Docker

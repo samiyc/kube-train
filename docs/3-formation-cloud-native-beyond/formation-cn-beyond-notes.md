@@ -696,19 +696,38 @@ Si le seul fichier modifié est un deployment YAML → la CI ne se déclenche PA
 
 **Obtenir un token (Keycloak local) :**
 
-```bash
-# Password grant (Resource Owner) — pour les tests manuels
-curl -X POST http://localhost:8180/realms/kube-train/protocol/openid-connect/token \
-  -d "grant_type=password" \
-  -d "client_id=kube-train-api" \
-  -d "client_secret=kube-train-secret" \
-  -d "username=testuser" \
-  -d "password=test123" | jq .access_token
+```powershell
+# PowerShell (Windows — recommandé si app lancée depuis IntelliJ)
+$resp = Invoke-RestMethod -Method POST `
+  -Uri "http://localhost:8180/realms/kube-train/protocol/openid-connect/token" `
+  -Body "grant_type=password&client_id=kube-train-api&client_secret=kube-train-secret&username=testuser&password=test123"
+$token = $resp.access_token
 
-# Utiliser le token
-curl http://localhost:8080/secure \
-  -H "Authorization: Bearer <le_token>"
+# GET /secure (JWT + API key)
+Invoke-RestMethod -Uri "http://localhost:8080/secure" `
+  -Headers @{"Authorization"="Bearer $token"; "X-API-KEY"="dev-key"}
+
+# POST /reservations avec JWT
+Invoke-RestMethod -Method POST -Uri "http://localhost:8080/reservations" `
+  -Headers @{"Authorization"="Bearer $token"; "Content-Type"="application/json"} `
+  -Body '{"passengerName":"Jean Dupont","trainId":"TGV-7042"}'
+
+# Décoder le payload JWT
+$payload = $token.Split('.')[1]
+$padded = $payload + ('=' * ((4 - $payload.Length % 4) % 4))
+[System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($padded)) | ConvertFrom-Json
 ```
+
+```bash
+# WSL/bash (si port-forward désactivé — voir ⚠️ ci-dessous)
+TOKEN=$(curl -s -X POST http://localhost:8180/realms/kube-train/protocol/openid-connect/token \
+  -d "grant_type=password&client_id=kube-train-api&client_secret=kube-train-secret&username=testuser&password=test123" \
+  | jq -r .access_token)
+curl http://localhost:8080/secure -H "Authorization: Bearer $TOKEN" -H "X-API-KEY: dev-key"
+```
+
+> ⚠️ **Piège WSL + IntelliJ** : si `kubectl port-forward service/kube-train-service 8080:80` tourne dans WSL,
+> `localhost:8080` depuis WSL pointe vers GKE, pas vers IntelliJ. Utiliser PowerShell dans ce cas.
 
 ---
 
