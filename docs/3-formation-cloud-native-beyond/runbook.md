@@ -54,6 +54,31 @@ gcloud pubsub subscriptions add-iam-policy-binding notification-subscription \
 
 ---
 
+## ☕ SDKMAN — Gestion Java sur WSL
+
+```bash
+# Lister les versions Temurin disponibles
+sdk list java | grep "21.*tem"
+
+# Installer et définir comme défaut global
+sdk install java 21.0.11-tem   # → choisir Y pour en faire le défaut
+
+# Switcher temporairement (terminal courant uniquement)
+sdk use java 21.0.11-tem
+
+# Créer un .sdkmanrc dans le dossier projet (appliqué automatiquement si sdk env init activé)
+echo "java=21.0.11-tem" > .sdkmanrc
+sdk env   # applique le .sdkmanrc du dossier courant
+
+# Vérifier la version active
+java -version
+```
+
+> ℹ️ `.sdkmanrc` est dans `.gitignore` — il est local à la machine WSL, pas commité.  
+> ⚠️ kube-train cible **Java 21** (LTS). Lombok (`@Slf4j`) ne supporte pas encore bien Java 25.
+
+---
+
 ## 🔄 Commandes quotidiennes
 
 ```bash
