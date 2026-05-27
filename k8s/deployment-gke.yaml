@@ -42,14 +42,15 @@ spec:
             memory: "768Mi" # 512Mi était trop juste avec l'agent OTel → OOMKilled
         
         # Attend que l'app soit démarrée avant d'activer liveness/readiness.
-        # failureThreshold * periodSeconds = 30 * 5 = 150s max pour démarrer.
+        # failureThreshold * periodSeconds = 50 * 5 = 250s max pour démarrer.
         # Tant que la startupProbe n'a pas réussi, la livenessProbe ne s'exécute pas.
+        # Spring Boot 4 + OTel Agent + Security + JPA = ~180s sur GKE Autopilot.
         startupProbe:
           httpGet:
             path: /actuator/health
             port: 8080
-          failureThreshold: 30  # 30 tentatives max
-          periodSeconds: 5      # toutes les 5s → 150s max pour démarrer
+          failureThreshold: 50  # 50 tentatives max (augmenté : OTel agent + Security allongent le startup)
+          periodSeconds: 5      # toutes les 5s → 250s max pour démarrer
 
         #Pod alive check (KO => Dead, Reboot pod)
         livenessProbe:
