@@ -32,6 +32,7 @@ metadata:
     app: notification
 spec:
   replicas: 1
+  revisionHistoryLimit: 5  # Garde les 5 derniers ReplicaSets, supprime les anciens
   selector:
     matchLabels:
       app: notification-pod

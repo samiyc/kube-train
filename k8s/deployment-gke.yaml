@@ -8,6 +8,7 @@ metadata:
     app: kube-train
 spec:
   replicas: 1  # GKE Autopilot quota gratuit : 1 replica au démarrage
+  revisionHistoryLimit: 5  # Garde les 5 derniers ReplicaSets (rollback), supprime les anciens
   # Quota limité : on tue l'ancien pod AVANT de créer le nouveau (évite 2 pods simultanés)
   strategy:
     type: RollingUpdate
