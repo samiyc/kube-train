@@ -157,19 +157,22 @@ jobs:
       - name: Déployer sur GKE
         if: steps.cluster_check.outputs.exists == 'true'
         run: |
-          # Injecter le tag git SHA dans le manifest avant d'appliquer (évite un double rollout)
-          sed "s|IMAGE_TAG_PLACEHOLDER|${{ env.IMAGE }}:${{ github.sha }}|g" \
+          # Remplace le tag d'image actuel (SHA précédent ou placeholder) par le nouveau
+          sed "s|image: .*kube-train-api.*|image: ${{ env.IMAGE }}:${{ github.sha }}|g" \
             k8s/deployment-gke.yaml | kubectl apply -f -
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/service.yaml
           kubectl apply -f k8s/hpa.yaml
 
           # Déployer le notification-service
-          sed "s|NOTIFICATION_IMAGE_PLACEHOLDER|${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}|g" \
+          sed "s|image: .*train-notification-service.*|image: ${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}|g" \
             k8s/notification-deployment-gke.yaml | kubectl apply -f -
 
           # Déployer l'OTel Collector (reçoit OTLP des pods → exporte vers Cloud Trace)
           kubectl apply -f k8s/otel-collector.yaml
+
+          # Ingress HTTPS (host hardcodé dans le fichier, plus de sed placeholder)
+          kubectl apply -f k8s/ingress-gke.yaml
 
       - name: Vérifier le déploiement kube-train-api
         if: steps.cluster_check.outputs.exists == 'true'
@@ -179,12 +182,8 @@ jobs:
         if: steps.cluster_check.outputs.exists == 'true'
         run: kubectl rollout status deployment/notification-deployment --timeout=5m
 
-      # Résout l'IP externe du nginx-ingress-controller pour construire le host nip.io,
-      # puis applique l'Ingress GKE avec TLS activé.
-      # Prérequis (setup manuel unique) : nginx-ingress, cert-manager, ClusterIssuer letsencrypt-prod
-      #   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.3/deploy/static/provider/cloud/deploy.yaml
-      #   helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version v1.16.2 --set crds.enabled=true --set global.leaderElection.namespace=cert-manager
-      #   sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|email@example.com|g" k8s/cluster-issuer.yaml | kubectl apply --validate=false -f -
+      # Applique l'Ingress HTTPS si nginx-ingress est installé.
+      # L'host nip.io est maintenant hardcodé dans ingress-gke.yaml (GitOps).
       # Si nginx-ingress n'est pas installé (ex: après recréation cluster), ce step est ignoré.
       - name: Déployer l'Ingress HTTPS (nip.io)
         if: steps.cluster_check.outputs.exists == 'true'
@@ -193,13 +192,7 @@ jobs:
             echo "⚠️ nginx-ingress non installé — Ingress ignoré. Réinstaller manuellement si besoin."
             exit 0
           fi
-          INGRESS_IP=$(kubectl get service ingress-nginx-controller \
-            -n ingress-nginx \
-            -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          echo "Ingress IP  : $INGRESS_IP"
-          echo "Host nip.io : api.${INGRESS_IP}.nip.io"
-          sed "s|NIP_IO_HOST_PLACEHOLDER|api.${INGRESS_IP}.nip.io|g" \
-            k8s/ingress-gke.yaml | kubectl apply -f -
+          kubectl apply -f k8s/ingress-gke.yaml
 
   # ─────────────────────────────────────────────────────────────────────────────
   # GitOps — Commit les image tags dans les manifests

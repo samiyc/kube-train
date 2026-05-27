@@ -1,6 +1,6 @@
 # Ingress GKE — HTTPS avec Let's Encrypt via cert-manager et nginx-ingress.
-# Le host NIP_IO_HOST_PLACEHOLDER est résolu dynamiquement par le pipeline CI/CD
-# à partir de l'IP externe du nginx-ingress-controller (ex: api.X.X.X.X.nip.io).
+# Host basé sur l'IP fixe du nginx-ingress LoadBalancer (34.78.39.236).
+# Si l'IP change (recréation cluster), mettre à jour ici et push → ArgoCD sync.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -11,10 +11,10 @@ spec:
   ingressClassName: nginx
   tls:
   - hosts:
-    - NIP_IO_HOST_PLACEHOLDER
+    - api.34.78.39.236.nip.io
     secretName: kube-train-tls   # cert-manager stocke le certificat dans ce Secret
   rules:
-  - host: NIP_IO_HOST_PLACEHOLDER
+  - host: api.34.78.39.236.nip.io
     http:
       paths:
       - path: /
