@@ -80,10 +80,18 @@ kubectl annotate serviceaccount default \
 # Puis déclencher la CI/CD :
 git commit --allow-empty -m "chore: redeploy après recréation cluster" && git push
 
-# --- Logs ---
+# --- Logs (live follow) ---
 kubectl logs -f deployment/kube-train-deployment -c api-container
 kubectl logs -f deployment/notification-deployment
 kubectl logs -f deployment/otel-collector                           # F3-J2+
+
+# --- Logs (dernières lignes / debug) ---
+kubectl logs deployment/kube-train-deployment -c api-container --tail=50
+kubectl logs deployment/kube-train-deployment -c cloud-sql-proxy --tail=30
+kubectl logs <pod-name> -c api-container --previous    # logs du restart précédent (crash debug)
+kubectl logs deployment/notification-deployment --tail=50
+
+# --- Restart ---
 kubectl rollout restart deployment/kube-train-deployment
 
 # --- Etat du cluster ---
