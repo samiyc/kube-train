@@ -1,12 +1,12 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="KubeTrainApi (secured)" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
     <option name="ACTIVE_PROFILES" value="postgres,secured" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.kubetrain.api.KubeTrainApiApplication" />
+    <module name="kube-train-api" />
     <envs>
       <env name="KAFKA_ENABLED" value="true" />
       <env name="TRAIN_API_KEY" value="dev-key" />
     </envs>
-    <module name="kube-train-api" />
-    <option name="SPRING_BOOT_MAIN_CLASS" value="com.kubetrain.api.KubeTrainApiApplication" />
     <method v="2">
       <option name="Make" enabled="true" />
     </method>

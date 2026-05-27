@@ -1,13 +1,10 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="KubeTrainApi (dev)" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
-    <!-- Profil "postgres" uniquement : pas d'OAuth2, endpoints tous accessibles -->
-    <!-- Utile pour dev rapide sans Keycloak                                      -->
     <option name="ACTIVE_PROFILES" value="postgres" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="com.kubetrain.api.KubeTrainApiApplication" />
     <module name="kube-train-api" />
     <envs>
       <env name="KAFKA_ENABLED" value="true" />
-      <!-- En local : valeur libre, utilisée par /secure via X-API-KEY header -->
       <env name="TRAIN_API_KEY" value="dev-key" />
     </envs>
     <method v="2">

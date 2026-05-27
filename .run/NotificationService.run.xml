@@ -1,10 +1,8 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="NotificationService" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
-    <!-- Pas de profil nécessaire en local : Kafka consumer toujours actif (profil "gcp" = Pub/Sub uniquement) -->
-    <!-- Prérequis : docker compose up -d kafka                                                                -->
-    <!-- Port : 8081 (configuré dans application.properties)                                                  -->
     <option name="SPRING_BOOT_MAIN_CLASS" value="com.kubetrain.notification.NotificationServiceApplication" />
     <module name="train-notification-service" />
+    <envs />
     <method v="2">
       <option name="Make" enabled="true" />
     </method>
