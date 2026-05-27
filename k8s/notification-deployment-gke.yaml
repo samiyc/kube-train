@@ -43,7 +43,7 @@ spec:
     spec:
       containers:
       - name: notification-container
-        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/train-notification-service:e085e987cbb79810f87d8c88d9f6c6dc61a8046b
+        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/train-notification-service:3b63eeae80ef6310a998199f25b6a9dc1e220839
         imagePullPolicy: Always
         ports:
         - containerPort: 8081
