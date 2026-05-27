@@ -1,0 +1,20 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="KubeTrainApi (secured)" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <!-- Profil "postgres,secured" : OAuth2 JWT obligatoire sur POST /reservations et GET /secure -->
+    <!-- Prérequis : docker compose up -d keycloak postgres                                       -->
+    <!-- Token : POST http://localhost:8180/realms/kube-train/protocol/openid-connect/token       -->
+    <!--   grant_type=password, client_id=kube-train-api, client_secret=kube-train-secret         -->
+    <!--   username=testuser, password=test123                                                     -->
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.kubetrain.api.KubeTrainApiApplication" />
+    <module name="kube-train-api" />
+    <option name="SPRING_BOOT_ACTIVE_PROFILES" value="postgres,secured" />
+    <envs>
+      <env name="KAFKA_ENABLED" value="true" />
+      <!-- En local : valeur libre, utilisée par /secure via X-API-KEY header -->
+      <env name="TRAIN_API_KEY" value="dev-key" />
+    </envs>
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
