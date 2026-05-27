@@ -4,12 +4,14 @@
 #   kafka    — Kafka KRaft (sans Zookeeper), port 9092
 #   postgres — PostgreSQL 15, port 5432 (profil Spring "postgres")
 #   jaeger   — Jaeger all-in-one, UI :16686, OTLP gRPC :4317 (observabilité locale J2)
+#   keycloak — Keycloak 24, UI :8180 (OAuth2/OIDC locale J4)
 #
 # Usage :
 #   docker compose up -d            # Démarrer tous les services
 #   docker compose up -d kafka      # Démarrer Kafka uniquement
 #   docker compose up -d postgres   # Démarrer PostgreSQL uniquement
 #   docker compose up -d jaeger     # Démarrer Jaeger uniquement (traces locales)
+#   docker compose up -d keycloak   # Démarrer Keycloak (auth OAuth2 locale)
 #   docker compose logs -f          # Voir les logs
 #   docker compose down             # Arrêter
 #   docker compose down -v          # Arrêter + supprimer les données
@@ -67,3 +69,21 @@ services:
       - "4318:4318"     # OTLP HTTP
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+
+  # Keycloak — Serveur d'identité OAuth2/OIDC pour le développement local
+  # UI Admin : http://localhost:8180 (admin/admin)
+  # Realm kube-train : importé automatiquement au démarrage
+  # Token endpoint : POST http://localhost:8180/realms/kube-train/protocol/openid-connect/token
+  # Usage : docker compose up -d keycloak
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: keycloak-kube-train
+    ports:
+      - "8180:8080"
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+    command: start-dev --import-realm

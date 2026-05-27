@@ -627,3 +627,191 @@ Si le seul fichier modifié est un deployment YAML → la CI ne se déclenche PA
 | ArgoCD vs Flux ? | Les deux sont CNCF. ArgoCD = UI riche, Application CRD. Flux = plus léger, GitRepository/Kustomization CRDs. |
 | Pourquoi `[skip ci]` dans le commit de tag ? | Évite la boucle infinie : CI commit → push → trigger CI → commit → ... |
 | Que se passe-t-il si ArgoCD est down ? | Le cluster continue de tourner (rien ne change). Au redémarrage, ArgoCD resynchronise le diff accumulé. |
+
+---
+
+## J4 — Sécurité applicative & réseau
+
+### OAuth2 Resource Server — Concepts
+
+**Le triangle OAuth2 :**
+
+```
+┌──────────────────┐         ┌──────────────────────┐
+│  Client          │         │  Authorization Server│
+│  (Postman, Front)│────────►│  (Keycloak, Auth0)   │
+│                  │◄────────│                      │
+│  Obtient un JWT  │  token  │  Émet les JWT        │
+└───────┬──────────┘         └──────────────────────┘
+        │
+        │ Authorization: Bearer <jwt>
+        ▼
+┌──────────────────┐
+│  Resource Server │
+│  (kube-train-api)│
+│                  │
+│  Valide le JWT   │
+│  (signature JWKS)│
+└──────────────────┘
+```
+
+**Rôles :**
+- **Authorization Server** (Keycloak) : authentifie l'utilisateur, émet les tokens JWT
+- **Resource Server** (notre API) : valide les tokens, protège les ressources
+- **Client** (Postman, front-end) : obtient un token et l'envoie avec chaque requête
+
+**JWT (JSON Web Token)** : token auto-contenu = `header.payload.signature`
+- **header** : algorithme de signature (RS256)
+- **payload** : claims (sub, exp, iss, roles, email...)
+- **signature** : signée par la clé privée de Keycloak → vérifiable avec la clé publique (JWKS)
+
+---
+
+### Implémentation dans kube-train
+
+**Architecture à profils :**
+
+```
+┌─────────────────────────────────────────────────────┐
+│  spring-boot-starter-oauth2-resource-server         │
+│                                                     │
+│  Profil "secured" actif :                           │
+│  → SecurityConfig.java                              │
+│  → JWT validé via issuer-uri (Keycloak)             │
+│  → GET /trains/** = public                          │
+│  → POST /reservations = authentifié                 │
+│  → GET /secure = authentifié                        │
+│                                                     │
+│  Profil "secured" inactif (défaut) :                │
+│  → PermissiveSecurityConfig.java                    │
+│  → Tout est permitAll (développement rapide)        │
+│  → Headers OWASP quand même ajoutés                 │
+└─────────────────────────────────────────────────────┘
+```
+
+**Pourquoi deux configs ?**
+- En dev local sans Keycloak → tout fonctionne comme avant
+- En test OAuth2 (docker-compose + Keycloak) → profil `secured` activé
+- Sur GKE → peut activer `secured` quand un IdP est configuré
+
+**Obtenir un token (Keycloak local) :**
+
+```bash
+# Password grant (Resource Owner) — pour les tests manuels
+curl -X POST http://localhost:8180/realms/kube-train/protocol/openid-connect/token \
+  -d "grant_type=password" \
+  -d "client_id=kube-train-api" \
+  -d "client_secret=kube-train-secret" \
+  -d "username=testuser" \
+  -d "password=test123" | jq .access_token
+
+# Utiliser le token
+curl http://localhost:8080/secure \
+  -H "Authorization: Bearer <le_token>"
+```
+
+---
+
+### Network Policies — Zero Trust réseau
+
+**Principe** : par défaut, tous les pods K8s peuvent communiquer entre eux (flat network). Les NetworkPolicies ajoutent de la micro-segmentation.
+
+**Implémentation kube-train (3 fichiers) :**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Namespace default                                          │
+│                                                             │
+│  NetworkPolicy: default-deny-ingress                        │
+│  → Bloque TOUT traffic entrant vers TOUS les pods           │
+│                                                             │
+│  NetworkPolicy: allow-ingress-api                           │
+│  → Autorise ingress vers kube-train-pod:8080                │
+│    - depuis namespace ingress-nginx (traffic externe)       │
+│    - depuis les pods du namespace (probes kubelet)           │
+│                                                             │
+│  NetworkPolicy: allow-ingress-otel-collector                │
+│  → Autorise ingress vers otel-collector:4317,4318           │
+│    - depuis tous les pods du namespace (traces OTLP)        │
+│                                                             │
+│  notification-deployment :                                  │
+│  → Aucune policy "allow" = AUCUN ingress autorisé           │
+│  → Normal : il ne reçoit PAS de traffic entrant             │
+│    (il PULL depuis Pub/Sub, c'est du egress)                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Point subtil** : le notification-service n'a pas besoin de policy ingress car il est un **consumer** (il initie les connexions vers Pub/Sub, ce qui est du egress). Le egress reste ouvert (DNS, Cloud SQL, Pub/Sub, etc.).
+
+---
+
+### Trivy — Scan de vulnérabilités images Docker
+
+**Problème** : une image Docker contient un OS (Debian/Ubuntu) + des libraries. Des CVE sont publiées chaque jour. Si on ne scanne pas, on déploie des vulnérabilités connues en production.
+
+**Solution** : Trivy dans la CI, APRÈS le build et AVANT le deploy.
+
+```yaml
+# Dans .github/workflows/deploy.yml (job build)
+- name: Trivy — Scan vulnérabilités image API
+  uses: aquasecurity/trivy-action@master
+  with:
+    image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+    format: 'table'
+    exit-code: '1'          # Fait échouer le build si vulnérabilité trouvée
+    severity: 'CRITICAL'    # Seulement les CRITICAL bloquent (HIGH = warning)
+    ignore-unfixed: true    # Ignore les CVE sans correctif disponible
+```
+
+**Niveaux de sévérité** :
+- CRITICAL : exploit actif, impact direct → **bloque le deploy**
+- HIGH : sérieux mais plus difficile à exploiter → warning (ne bloque pas)
+- MEDIUM/LOW : informatif
+
+**En entreprise** : on ajoute aussi un scan périodique (schedule) car de nouvelles CVE peuvent affecter des images déjà déployées.
+
+---
+
+### OWASP Security Headers
+
+Headers HTTP ajoutés par Spring Security (même en mode permissif) :
+
+| Header | Valeur | Protection |
+|---|---|---|
+| `X-Content-Type-Options` | `nosniff` | Empêche le navigateur de "deviner" le MIME type (XSS via SVG) |
+| `X-Frame-Options` | `DENY` | Empêche l'inclusion dans un iframe (clickjacking) |
+| `Cache-Control` | `no-store` | Pas de cache navigateur sur les réponses authentifiées |
+| `Strict-Transport-Security` | `max-age=...` | Force HTTPS (HSTS) — ajouté automatiquement si HTTPS actif |
+
+Spring Security ajoute ces headers par défaut. Notre config les active explicitement pour la documentation.
+
+---
+
+### Keycloak — Configuration locale
+
+**Realm pré-configuré** (importé automatiquement par docker-compose) :
+
+| Élément | Valeur |
+|---|---|
+| Realm | `kube-train` |
+| Client (confidentiel) | `kube-train-api` / secret: `kube-train-secret` |
+| Client (public, pour front) | `kube-train-front` |
+| User test | `testuser` / `test123` (rôle: user) |
+| User admin | `admin` / `admin123` (rôles: user, admin) |
+| URL admin | http://localhost:8180 |
+| Issuer URI | http://localhost:8180/realms/kube-train |
+
+**Pourquoi port 8180 ?** — Notre API est sur 8080. Keycloak par défaut est aussi sur 8080. On mappe sur 8180 pour éviter le conflit.
+
+---
+
+### Points clés entretien
+
+| Question | Réponse |
+|---|---|
+| Différence Resource Server vs Client ? | Resource Server = valide les JWT (notre API). Client = obtient les JWT (front-end, Postman). |
+| Pourquoi JWT plutôt que session ? | Stateless : pas de session serveur, scale horizontal trivial, chaque requête porte son auth. |
+| Comment l'API valide un JWT sans contacter Keycloak à chaque requête ? | Elle télécharge les clés publiques (JWKS) au démarrage et les cache. Vérification locale de la signature. |
+| NetworkPolicy : deny all suffit-il ? | Non. Il faut aussi des "allow" explicites sinon même les probes K8s et le DNS sont bloqués. |
+| Trivy bloque sur CRITICAL : et si c'est un faux positif ? | Fichier `.trivyignore` pour lister les CVE ignorées (avec justification en commentaire). |
+| Headers OWASP : pourquoi en mode permissif aussi ? | Défense en profondeur. Les headers protègent le navigateur même si l'authentification n'est pas active. |

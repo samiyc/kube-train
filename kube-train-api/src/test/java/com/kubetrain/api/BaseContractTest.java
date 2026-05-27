@@ -1,6 +1,7 @@
 package com.kubetrain.api;
 
 import com.kubetrain.api.config.EventPublisherConfig;
+import com.kubetrain.api.config.PermissiveSecurityConfig;
 import com.kubetrain.api.controller.TrainController;
 import com.kubetrain.api.service.TrainService;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -27,7 +28,7 @@ import org.springframework.web.context.WebApplicationContext;
  * RestAssuredMockMvc → librairie qui fait les appels HTTP simulés
  */
 @WebMvcTest(TrainController.class)
-@Import({TrainService.class, EventPublisherConfig.class, BaseContractTest.MetricsTestConfig.class})
+@Import({TrainService.class, EventPublisherConfig.class, PermissiveSecurityConfig.class, BaseContractTest.MetricsTestConfig.class})
 public abstract class BaseContractTest {
 
     // @WebMvcTest ne charge pas Micrometer → on fournit un SimpleMeterRegistry minimal

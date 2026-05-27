@@ -26,7 +26,8 @@ Pour recréer l'infrastructure complète depuis un compte GCP vide :
 8. Pub/Sub                      → ci-dessous § "Pub/Sub"
 9. HTTPS (nginx + cert-manager) → runbook.md (F2) § "HTTPS sur GKE"
 10. ArgoCD (optionnel, F3-J3)   → ci-dessous § "F3-J3: ArgoCD & GitOps"
-11. git push → CI/CD build + commit tags → ArgoCD sync auto
+11. Network Policies (F3-J4)    → ci-dessous § "F3-J4: Sécurité"
+12. git push → CI/CD build + Trivy scan + commit tags → ArgoCD sync auto
 ```
 
 ---
@@ -166,9 +167,50 @@ kubectl delete namespace argocd
 
 ### F3-J4: Sécurité (OAuth2, NetworkPolicies, Trivy)
 ```bash
-# À compléter lors de J4
-# Keycloak local → docker compose up -d keycloak
-# NetworkPolicies → kubectl apply -f k8s/network-policy-*.yaml
+# ─── Local : OAuth2 avec Keycloak ───
+
+# 1. Démarrer Keycloak (port 8180, realm importé automatiquement)
+docker compose up -d keycloak
+# → Admin UI : http://localhost:8180 (admin/admin)
+# → Realm kube-train créé automatiquement avec users et clients
+
+# 2. Lancer l'API avec le profil "secured"
+cd kube-train-api
+SPRING_PROFILES_ACTIVE=postgres,secured ./mvnw spring-boot:run
+
+# 3. Obtenir un token JWT (password grant, pour les tests manuels)
+TOKEN=$(curl -s -X POST http://localhost:8180/realms/kube-train/protocol/openid-connect/token \
+  -d "grant_type=password" \
+  -d "client_id=kube-train-api" \
+  -d "client_secret=kube-train-secret" \
+  -d "username=testuser" \
+  -d "password=test123" | jq -r .access_token)
+
+# 4. Tester un endpoint protégé
+curl http://localhost:8080/secure -H "Authorization: Bearer $TOKEN"
+# → 200 OK (avec token valide)
+curl http://localhost:8080/secure
+# → 401 Unauthorized (sans token)
+
+# 5. Les endpoints publics restent accessibles sans token
+curl http://localhost:8080/trains
+# → 200 OK (pas besoin de token)
+
+# ─── GKE : Network Policies (déployées par la CI automatiquement) ───
+
+# Vérifier les NetworkPolicies appliquées
+kubectl get networkpolicies
+# → default-deny-ingress, allow-ingress-api, allow-ingress-otel-collector
+
+# Tester la connectivité (depuis un pod de debug)
+kubectl run debug --rm -it --image=alpine -- sh
+# Dans le pod : apk add curl && curl kube-train-service:80/trains
+# → Devrait marcher (intra-namespace autorisé pour l'API)
+
+# ─── CI : Trivy scan ───
+# Automatique : intégré dans le job "build" de deploy.yml
+# Si une image a une CVE CRITICAL → le build échoue
+# Ignorer un faux positif : créer .trivyignore à la racine du service
 ```
 
 ### F3-J5: Qualité (Cucumber, SonarCloud)

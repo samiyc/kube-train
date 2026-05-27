@@ -1,6 +1,7 @@
 package com.kubetrain.api.controller;
 
 import com.kubetrain.api.config.EventPublisherConfig;
+import com.kubetrain.api.config.PermissiveSecurityConfig;
 import com.kubetrain.api.service.TrainService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -33,7 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *  - @DisplayName pour des noms lisibles dans le rapport
  */
 @WebMvcTest(TrainController.class)
-@Import({TrainService.class, EventPublisherConfig.class, TrainControllerTest.MetricsTestConfig.class})
+@Import({TrainService.class, EventPublisherConfig.class, PermissiveSecurityConfig.class, TrainControllerTest.MetricsTestConfig.class})
 class TrainControllerTest {
 
     // @WebMvcTest ne charge pas Micrometer → on fournit un SimpleMeterRegistry minimal

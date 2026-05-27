@@ -1,0 +1,23 @@
+# Network Policy — OTel Collector : autorise les traces entrantes
+#
+# Sources autorisées : tous les pods du namespace default (les deux services)
+# Ports autorisés : 4317 (gRPC OTLP), 4318 (HTTP OTLP)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-otel-collector
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: otel-collector
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}   # Tous les pods du namespace (api + notification)
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318

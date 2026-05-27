@@ -85,6 +85,12 @@
 			<artifactId>micrometer-registry-prometheus</artifactId>
 		</dependency>
 
+		<!-- OAuth2 Resource Server : validation JWT (Keycloak local, ou Google OIDC sur GKE) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+		</dependency>
+
 		<!-- Google Cloud Pub/Sub : remplace Kafka sur GKE (profil gcp) -->
 		<dependency>
 			<groupId>com.google.cloud</groupId>
@@ -104,6 +110,12 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- Spring Security Test : @WithMockUser, SecurityMockMvcConfigurers -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security-test</artifactId>
+			<scope>test</scope>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator-test</artifactId>

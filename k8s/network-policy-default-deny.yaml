@@ -1,0 +1,18 @@
+# Network Policy — Deny All Ingress par défaut (Zero Trust)
+#
+# 🎯 Principe : tout traffic entrant est bloqué sauf si explicitement autorisé.
+#    Chaque pod doit avoir sa propre NetworkPolicy "allow" pour recevoir du traffic.
+#    Le traffic sortant (egress) reste ouvert (DNS, Cloud SQL, Pub/Sub, etc.)
+#
+# 🎯 Question entretien :
+#    "Comment sécurisez-vous le réseau entre pods ?"
+#    → Default deny + allow explicite par service = micro-segmentation réseau
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: default
+spec:
+  podSelector: {}   # Sélectionne TOUS les pods du namespace
+  policyTypes:
+    - Ingress       # Bloque tout ingress (le egress reste ouvert)

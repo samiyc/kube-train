@@ -77,6 +77,26 @@ jobs:
             train-notification-service/
           docker push ${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}
 
+      # Trivy — Scan de vulnérabilités sur l'image Docker (OWASP / supply chain security)
+      # Échoue le build si vulnérabilités CRITICAL détectées (HIGH = warning seulement)
+      - name: Trivy — Scan vulnérabilités image API
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL'
+          ignore-unfixed: true
+
+      - name: Trivy — Scan vulnérabilités image Notification
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL'
+          ignore-unfixed: true
+
   deploy:
     name: Deploy to GKE
     needs: build
@@ -170,6 +190,11 @@ jobs:
 
           # Déployer l'OTel Collector (reçoit OTLP des pods → exporte vers Cloud Trace)
           kubectl apply -f k8s/otel-collector.yaml
+
+          # Network Policies (zero-trust : deny all + allow explicite)
+          kubectl apply -f k8s/network-policy-default-deny.yaml
+          kubectl apply -f k8s/network-policy-api.yaml
+          kubectl apply -f k8s/network-policy-otel.yaml
 
           # Ingress HTTPS (host hardcodé dans le fichier, plus de sed placeholder)
           kubectl apply -f k8s/ingress-gke.yaml

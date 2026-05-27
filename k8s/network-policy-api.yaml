@@ -1,0 +1,34 @@
+# Network Policy — Autorise le traffic entrant vers kube-train-api
+#
+# Sources autorisées :
+#   1. Ingress Controller (nginx) → pour le traffic HTTP externe
+#   2. OTel Collector → pour recevoir les health-checks (optionnel)
+#   3. Tout pod du namespace default (simplifié pour GKE Autopilot)
+#
+# Port autorisé : 8080 (Spring Boot)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-api
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: kube-train-pod
+  policyTypes:
+    - Ingress
+  ingress:
+    # Autorise le traffic depuis le namespace ingress-nginx (LoadBalancer externe)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Autorise le traffic intra-namespace (readiness probes kubelet, OTel scrape)
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
