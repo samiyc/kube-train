@@ -79,26 +79,73 @@ jobs:
 
       # Trivy — Scan de vulnérabilités sur l'image Docker (OWASP / supply chain security)
       # continue-on-error: les CVE sont signalées (⚠️) mais ne bloquent pas le deploy.
-      # En prod : exit-code: '1' + mise à jour des dépendances obligatoire avant merge.
+      # En prod : retirer continue-on-error pour bloquer sur CRITICAL.
       - name: Trivy — Scan vulnérabilités image API
         uses: aquasecurity/trivy-action@master
+        id: trivy-api
         continue-on-error: true
         with:
           image-ref: ${{ env.IMAGE }}:${{ github.sha }}
-          format: 'table'
+          format: 'json'
+          output: 'trivy-api.json'
           exit-code: '1'
           severity: 'CRITICAL'
           ignore-unfixed: true
 
       - name: Trivy — Scan vulnérabilités image Notification
         uses: aquasecurity/trivy-action@master
+        id: trivy-notif
         continue-on-error: true
         with:
           image-ref: ${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}
-          format: 'table'
+          format: 'json'
+          output: 'trivy-notif.json'
           exit-code: '1'
           severity: 'CRITICAL'
           ignore-unfixed: true
+
+      # Résumé Trivy : annotation warning + tableau markdown dans le Step Summary
+      - name: Trivy — Résumé des vulnérabilités
+        if: steps.trivy-api.outcome == 'failure' || steps.trivy-notif.outcome == 'failure'
+        run: |
+          echo "## ⚠️ Trivy — Vulnérabilités CRITICAL détectées" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Ces CVE ont des correctifs disponibles. Planifier une mise à jour des dépendances." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # --- kube-train-api ---
+          if [ -f trivy-api.json ]; then
+            VULNS=$(jq -r '
+              [.Results[]? | .Vulnerabilities[]?] |
+              map("| \(.PkgName) | \(.InstalledVersion) | \(.FixedVersion) | \(.VulnerabilityID) | \(.Title | .[0:80]) |") |
+              .[]' trivy-api.json 2>/dev/null || true)
+            if [ -n "$VULNS" ]; then
+              COUNT=$(echo "$VULNS" | wc -l)
+              echo "### 🐳 kube-train-api — ${COUNT} CVE CRITICAL" >> $GITHUB_STEP_SUMMARY
+              echo "| Library | Installed | Fixed | CVE | Description |" >> $GITHUB_STEP_SUMMARY
+              echo "|---|---|---|---|---|" >> $GITHUB_STEP_SUMMARY
+              echo "$VULNS" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "::warning title=⚠️ Trivy kube-train-api::${COUNT} vulnérabilité(s) CRITICAL détectée(s) — voir Summary pour détails"
+            fi
+          fi
+
+          # --- train-notification-service ---
+          if [ -f trivy-notif.json ]; then
+            VULNS=$(jq -r '
+              [.Results[]? | .Vulnerabilities[]?] |
+              map("| \(.PkgName) | \(.InstalledVersion) | \(.FixedVersion) | \(.VulnerabilityID) | \(.Title | .[0:80]) |") |
+              .[]' trivy-notif.json 2>/dev/null || true)
+            if [ -n "$VULNS" ]; then
+              COUNT=$(echo "$VULNS" | wc -l)
+              echo "### 🐳 train-notification-service — ${COUNT} CVE CRITICAL" >> $GITHUB_STEP_SUMMARY
+              echo "| Library | Installed | Fixed | CVE | Description |" >> $GITHUB_STEP_SUMMARY
+              echo "|---|---|---|---|---|" >> $GITHUB_STEP_SUMMARY
+              echo "$VULNS" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "::warning title=⚠️ Trivy notification-service::${COUNT} vulnérabilité(s) CRITICAL détectée(s) — voir Summary pour détails"
+            fi
+          fi
 
   deploy:
     name: Deploy to GKE
