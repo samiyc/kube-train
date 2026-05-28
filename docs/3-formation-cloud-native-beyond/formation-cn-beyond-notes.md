@@ -667,6 +667,91 @@ Si le seul fichier modifié est un deployment YAML → la CI ne se déclenche PA
 
 ---
 
+### Anatomie d'un JWT réel (kube-train + Keycloak)
+
+Un JWT = 3 parties encodées en Base64url, séparées par des `.`
+
+```
+eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJSV0ZJ...  ← Header
+.
+eyJleHAiOjE3Nzk5NTE5NzIsImlhdCI6MTc3OTk1MTY3MiwianRpIjoiMT...  ← Payload
+.
+W5L6mfMGUlkibejRLgZWhLOFOIcaPhtutqTnR6ZPxlV7IVpFQ4Y3yy4V...   ← Signature
+```
+
+**1. Header** (algorithme + clé utilisée)
+
+```json
+{
+  "alg": "RS256",  // Algorithme RSA + SHA-256 (asymétrique : clé privée signe, clé publique vérifie)
+  "typ": "JWT",
+  "kid": "RWFI1Fi4-APITeGQ37CZlmUtFkibMOs65xO642vs0Yg"  // ID de la clé publique → Spring va chercher dans JWKS
+}
+```
+
+**2. Payload** (les "claims" — exemple réel kube-train)
+
+```json
+{
+  "exp": 1779951972,                             // Expiration (Unix timestamp) — Spring rejette si dépassé
+  "iat": 1779951672,                             // Issued At → exp - iat = 300s = 5 min de validité
+  "jti": "11af516c-1cd1-44e6-9aa0-5263293fa608", // JWT ID unique (évite le rejeu)
+  "iss": "http://localhost:8180/realms/kube-train", // Issuer — doit matcher issuer-uri dans application-secured.properties
+  "sub": "d30a1728-ce77-4486-949b-73ce0deaea47", // Subject = UUID de l'utilisateur dans Keycloak
+  "typ": "Bearer",
+  "azp": "kube-train-api",                       // Authorized Party = le client qui a demandé le token
+  "scope": "email profile",                      // Scopes accordés
+  "preferred_username": "testuser",              // Nom d'utilisateur Keycloak
+  "email": "testuser@kube-train.local",
+  "name": "Test User"
+}
+```
+
+**3. Signature** — non décodable (c'est un hash signé)
+
+```
+Signature = RSA_sign(
+  Base64url(header) + "." + Base64url(payload),
+  clé_privée_keycloak
+)
+```
+Spring Security vérifie cette signature avec la **clé publique** récupérée automatiquement depuis :
+`http://localhost:8180/realms/kube-train/protocol/openid-connect/certs` (JWKS endpoint)
+
+> 🔑 **Point clé** : le payload est lisible par n'importe qui (base64 ≠ chiffrement). La sécurité repose **uniquement sur la signature**. Ne jamais mettre de secrets dans les claims JWT.
+
+**Décoder le payload depuis PowerShell :**
+
+```powershell
+$payload = $token.Split('.')[1]
+$padded  = $payload + ('=' * ((4 - $payload.Length % 4) % 4))  # padding Base64
+[System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($padded)) | ConvertFrom-Json
+```
+
+**Ce que fait Spring Security à chaque requête :**
+
+```
+Authorization: Bearer <jwt>
+       │
+       ▼
+Spring extrait le header → lit "kid"
+       │
+       ▼
+Récupère la clé publique depuis JWKS (mise en cache)
+       │
+       ▼
+Vérifie la signature RSA
+       │
+       ▼
+Vérifie exp > now, iss == issuer-uri configuré
+       │
+       ▼
+✅ Crée un Authentication dans le SecurityContext
+   (accès au sub, email, roles via @AuthenticationPrincipal)
+```
+
+---
+
 ### Implémentation dans kube-train
 
 **Architecture à profils :**
