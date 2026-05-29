@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
@@ -165,9 +166,9 @@ public class TrainService {
                     .createdAt(Instant.now())
                     .build());
             log.debug("[OUTBOX] Événement {} enregistré pour la réservation {}", event.eventId(), reservationId);
-        } catch (Exception e) {
+        } catch (JacksonException e) {
             log.error("[OUTBOX] Impossible de sérialiser l'événement pour {} : {}", reservationId, e.getMessage());
-            throw new RuntimeException("Échec écriture outbox pour " + reservationId, e);
+            throw new IllegalStateException("Échec écriture outbox pour " + reservationId, e);
         }
     }
 

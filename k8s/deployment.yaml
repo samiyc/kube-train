@@ -16,6 +16,7 @@ spec:
       labels:
         app: kube-train-pod
     spec:
+      automountServiceAccountToken: false
       containers:
       - name: api-container
         image: kube-train-api:v5  # 👈 Changer la version de l'image ici
@@ -28,6 +29,7 @@ spec:
           requests:
             cpu: "200m"     # Il réserve 0.2 CPU au démarrage
             memory: "256Mi" # Il réserve 256 Mo de RAM
+            ephemeral-storage: "1Gi"
           limits:
             cpu: "500m"     # Il ne pourra jamais dépasser 0.5 CPU (sinon il est bridé)
             memory: "512Mi" # S'il dépasse 512 Mo, Kubernetes le tue (OOMKilled)

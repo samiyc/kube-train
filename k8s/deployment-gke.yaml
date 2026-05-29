@@ -23,6 +23,7 @@ spec:
       labels:
         app: kube-train-pod
     spec:
+      automountServiceAccountToken: false  # K8s SA token non requis (auth via GKE metadata server)
       containers:
       - name: api-container
         image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api:0e792c4358e406d18aa64349c6838cdef1f6266b
@@ -37,6 +38,7 @@ spec:
           requests:
             cpu: "200m"     # Il réserve 0.2 CPU au démarrage
             memory: "512Mi" # Spring Boot 4 + OTel Agent (~150MB) => ~450-500MB au démarrage
+            ephemeral-storage: "1Gi"  # Stockage éphémère pour logs/tmp
           limits:
             cpu: "500m"     # Il ne pourra jamais dépasser 0.5 CPU (sinon il est bridé)
             memory: "768Mi" # 512Mi était trop juste avec l'agent OTel → OOMKilled
@@ -133,6 +135,7 @@ spec:
           requests:
             cpu: "50m"
             memory: "64Mi"
+            ephemeral-storage: "256Mi"
           limits:
             cpu: "100m"
             memory: "128Mi"
