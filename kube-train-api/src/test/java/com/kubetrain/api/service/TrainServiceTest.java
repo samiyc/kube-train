@@ -44,8 +44,7 @@ class TrainServiceTest {
     void setUp() {
         eventPublisher = mock(ReservationEventPublisher.class);
         reservationRepository = mock(ReservationRepository.class);
-        service = new TrainService(eventPublisher, new SimpleMeterRegistry());
-        // objectMapper null par défaut → ne sera setté que dans les tests qui en ont besoin
+        service = new TrainService(eventPublisher, new SimpleMeterRegistry(), new ObjectMapper());
         // reservationRepository = null par défaut → branche mémoire active
     }
 
@@ -62,7 +61,6 @@ class TrainServiceTest {
             ReflectionTestUtils.setField(service, "reservationRepository", reservationRepository);
             outboxEventRepository = mock(OutboxEventRepository.class);
             ReflectionTestUtils.setField(service, "outboxEventRepository", outboxEventRepository);
-            ReflectionTestUtils.setField(service, "objectMapper", new ObjectMapper());
         }
 
         @Test

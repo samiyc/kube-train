@@ -75,6 +75,10 @@ public class PubSubReservationEventPublisher implements ReservationEventPublishe
             ApiFuture<String> future = publisher.publish(message);
             String messageId = future.get(10, TimeUnit.SECONDS);
             log.info("[PUBSUB-PUBLISHER] Event publié — reservationId={}, messageId={}", event.reservationId(), messageId);
+        } catch (InterruptedException e) {
+            // Restaurer le flag d'interruption du thread (règle Sonar java:S2142)
+            Thread.currentThread().interrupt();
+            log.error("[PUBSUB-PUBLISHER] Thread interrompu lors de la publication — reservationId={}", event.reservationId(), e);
         } catch (Exception e) {
             log.error("[PUBSUB-PUBLISHER] Échec publication — reservationId={}", event.reservationId(), e);
         }

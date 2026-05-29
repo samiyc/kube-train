@@ -30,6 +30,9 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    // Constante pour éviter la duplication du littéral "timestamp" (règle Sonar java:S1192)
+    private static final String TIMESTAMP_FIELD = "timestamp";
+
     /**
      * 404 — Ressource non trouvée
      */
@@ -38,7 +41,7 @@ public class GlobalExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
         problem.setTitle("Ressource introuvable");
         problem.setType(URI.create("https://api.kube-train.local/errors/not-found"));
-        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty(TIMESTAMP_FIELD, Instant.now());
         return problem;
     }
 
@@ -55,7 +58,7 @@ public class GlobalExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, "Route inconnue : " + ex.getResourcePath());
         problem.setTitle("Ressource introuvable");
         problem.setType(URI.create("https://api.kube-train.local/errors/not-found"));
-        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty(TIMESTAMP_FIELD, Instant.now());
         return problem;
     }
 
@@ -67,7 +70,7 @@ public class GlobalExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
         problem.setTitle("Accès refusé");
         problem.setType(URI.create("https://api.kube-train.local/errors/unauthorized"));
-        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty(TIMESTAMP_FIELD, Instant.now());
         return problem;
     }
 
@@ -87,7 +90,7 @@ public class GlobalExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, errors);
         problem.setTitle("Données invalides");
         problem.setType(URI.create("https://api.kube-train.local/errors/validation"));
-        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty(TIMESTAMP_FIELD, Instant.now());
         return problem;
     }
 
@@ -108,7 +111,7 @@ public class GlobalExceptionHandler {
         );
         problem.setTitle("Erreur serveur");
         problem.setType(URI.create("https://api.kube-train.local/errors/internal"));
-        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty(TIMESTAMP_FIELD, Instant.now());
         return problem;
     }
 }

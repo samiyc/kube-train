@@ -45,22 +45,23 @@ public class TrainService {
 
     private final ReservationEventPublisher eventPublisher;
     private final MeterRegistry meterRegistry;
+    private final ObjectMapper objectMapper;
 
-    // Injection optionnelle : null si profil "postgres" inactif (JPA exclu par défaut)
+    // @Autowired(required=false) : injection optionnelle — null si profil "postgres" inactif.
+    // Sonar java:S6813 (field injection) est supprimé ici car ce pattern est la seule façon
+    // d'injecter des beans Spring conditionnels sans @Conditional sur le service lui-même.
+    @SuppressWarnings("java:S6813")
     @Autowired(required = false)
     private ReservationRepository reservationRepository;
 
-    // Injection optionnelle : null si profil "postgres" inactif
+    @SuppressWarnings("java:S6813")
     @Autowired(required = false)
     private OutboxEventRepository outboxEventRepository;
 
-    // Auto-configuré par Spring Boot (Jackson 3) — null uniquement en tests unitaires
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    public TrainService(ReservationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
+    public TrainService(ReservationEventPublisher eventPublisher, MeterRegistry meterRegistry, ObjectMapper objectMapper) {
         this.eventPublisher = eventPublisher;
         this.meterRegistry = meterRegistry;
+        this.objectMapper = objectMapper;
     }
 
     // Simule une base de données en mémoire pour les trains (pas de table trains en DB pour l'instant)

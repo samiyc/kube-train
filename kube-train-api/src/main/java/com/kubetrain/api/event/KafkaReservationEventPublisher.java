@@ -43,6 +43,10 @@ public class KafkaReservationEventPublisher implements ReservationEventPublisher
             log.info("[EVENT-PUBLISHER] Event publié sur [{}] : reservationId={}, trainId={}",
                     TOPIC, event.reservationId(), event.trainId());
 
+        } catch (InterruptedException e) {
+            // Restaurer le flag d'interruption du thread (règle Sonar java:S2142)
+            Thread.currentThread().interrupt();
+            log.error("[EVENT-PUBLISHER] Thread interrompu lors de la publication : {}", event.reservationId(), e);
         } catch (Exception e) {
             // Log l'erreur mais ne bloque pas la réservation (best-effort)
             // En prod avec Outbox Pattern, on écrirait en BDD et un poller republierait
