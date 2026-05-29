@@ -1086,6 +1086,68 @@ cd kube-train-api
 
 ---
 
+### Trivy — Scan CVE des images Docker
+
+**Rôle** : scanner les dépendances Java (fat JAR) + paquets OS (apt) de l'image Docker finale.  
+Intégré au pipeline CI/CD avec `continue-on-error: true` + rapport markdown dans `$GITHUB_STEP_SUMMARY`.
+
+**Stratégie de remédiation CVE :**
+
+| Type de CVE | Source | Fix |
+|-------------|--------|-----|
+| Dépendances Java (Spring Boot BOM) | `pom.xml` parent version | Bumper `spring-boot-starter-parent` |
+| Dépendances Java (hors BOM) | Property override | `<tomcat.version>11.0.22</tomcat.version>` |
+| Dépendances runtime (OTel agent) | Dockerfile ADD | Bumper l'URL de téléchargement |
+| Paquets OS (openssl, curl) | Image de base | `apt-get upgrade` dans le Dockerfile |
+
+**Commande Trivy locale :**
+```bash
+trivy image --severity CRITICAL kube-train-api:latest
+```
+
+**`.trivyignore`** : pour ignorer les faux positifs (un CVE par ligne).
+
+---
+
+### Hardening qualité — Résumé des fixes appliqués
+
+**Sonar issues corrigées (22 issues) :**
+- S1604 : anonymous class → lambda
+- S2140 : `Math.random()` → `ThreadLocalRandom`
+- S112/S1130 : `@SuppressWarnings` sur `throws Exception` imposé par Spring Security
+- S1710 : `@ApiResponses` → `@ApiResponse` empilés
+- S5738 : `@SuppressWarnings` sur constante dépréciée Kafka
+- S6068 : `eq()` inutile dans Mockito
+- S5838/S5853 : assertions AssertJ chaînées
+- S7026 : `RUN wget` → `ADD https://` dans Dockerfiles
+- S6865 : `automountServiceAccountToken: false` (K8s)
+- S6897 : `ephemeral-storage` requests (K8s)
+- S8233 : permissions GitHub Actions au niveau job (principe du moindre privilège)
+
+**CVE corrigées (7 CRITICAL) :**
+- Spring Boot 4.0.0 → 4.0.6 (fixes spring-boot, spring-security-web, kafka-clients, tomcat)
+- OTel agent 2.4.0 → 2.26.1 (CVE-2026-33701)
+- Tomcat 11.0.21 → 11.0.22 via property override (CVE-2026-41293/43512/43515)
+
+**Résultat SonarCloud :**
+- Quality Gate : PASSED ✅
+- Coverage : 83.1% (exclusions : config, entity, dto, outbox, Application)
+- Security : A | Reliability : A | Maintainability : A | Duplication : 0%
+
+---
+
+### Audit 12-Factor — Points d'attention restants
+
+| Facteur | Status | Détail |
+|---------|--------|--------|
+| Disposability | ⚠️ | Ajouter `server.shutdown=graceful` + `spring.lifecycle.timeout-per-shutdown-phase=30s` |
+| Container security | ⚠️ | Manque `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `drop: [ALL]` |
+| Config (dev) | ⚠️ | `docker-compose.yml` / `postgres-deployment.yaml` ont des creds en dur (OK pour dev, à noter) |
+
+Ces points sont de bonnes améliorations pour la Formation F4 (sécurité approfondie).
+
+---
+
 ### Points clés entretien J5
 
 | Question | Réponse |
@@ -1094,4 +1156,7 @@ cd kube-train-api
 | `@Given` vs `@When` vs `@Then` en Java ? | Fonctionnellement identiques (alias). La convention : Given = setup state, When = action, Then = assertion. L'ordre dans le `.feature` est documentaire. |
 | Pourquoi JaCoCo ET SonarCloud ? | JaCoCo mesure la couverture (bytes instrumentés à l'exécution). SonarCloud interprète + centralise + historise + applique des Quality Gates. Sonar sans JaCoCo = analyse statique sans coverage. |
 | Quality Gate bloquant : bonne pratique ? | Oui en production. En formation : `continue-on-error` ou condition `if [ -z "$SONAR_TOKEN" ]` pour rendre l'étape optionnelle pendant le setup. |
+| Trivy vs SonarCloud ? | Trivy = scan de sécurité sur l'image Docker (OS + JAR). SonarCloud = analyse statique du code source (bugs, smells, coverage). Complémentaires : Trivy protège le runtime, Sonar protège la codebase. |
+| Comment fixer une CVE Java ? | 1. Identifier la lib via Trivy. 2. Vérifier si le BOM Spring Boot couvre (bumper parent). 3. Sinon override via `<property>` dans pom.xml. 4. Tester + valider avec `mvn dependency:tree`. |
+| `sonar.coverage.exclusions` : triche ? | Non — pratique standard. Les classes infra (config, entity, DTO) n'ont pas de logique métier testable. On exclut le bruit pour mesurer le signal (coverage du code métier réel). |
 | Cucumber `Scenario Outline` ? | Template paramétré. Chaque ligne du tableau `Examples` génère un scénario distinct. Évite la duplication de scénarios quasi-identiques. |

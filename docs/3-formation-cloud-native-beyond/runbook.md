@@ -313,8 +313,31 @@ kubectl run debug --rm -it --image=alpine -- sh
 
 ### F3-J5: Qualité (Cucumber, SonarCloud)
 ```bash
-# À compléter lors de J5
-# Connexion SonarCloud → https://sonarcloud.io → import GitHub repo
+# 1. SonarCloud — Connexion
+# https://sonarcloud.io → Import GitHub repo → samiyc/kube-train
+# Désactiver "Automatic Analysis" (Settings → Analysis Method)
+# Créer secret SONAR_TOKEN dans GitHub repo Settings → Secrets → Actions
+
+# 2. Lancer l'analyse locale
+cd kube-train-api
+./mvnw test sonar:sonar -Dsonar.token=$SONAR_TOKEN
+
+# 3. CVE — Vérifier versions
+./mvnw dependency:tree | grep -E "tomcat|kafka|spring-security"
+# Si version < fix : ajouter <property> override dans pom.xml
+
+# 4. Trivy — Scanner en local
+docker build -t kube-train-api:test .
+trivy image --severity CRITICAL kube-train-api:test
+
+# 5. Cucumber — Lancer les BDD tests
+./mvnw test -Dtest=RunCucumberTest
+
+# 6. Coverage — Vérifier JaCoCo
+./mvnw test jacoco:report
+# Rapport : target/site/jacoco/index.html
+
+# Résultat attendu : QG PASSED, Coverage > 80%, 0 CVE CRITICAL
 ```
 
 ---
