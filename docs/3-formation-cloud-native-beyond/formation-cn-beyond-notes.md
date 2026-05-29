@@ -376,14 +376,14 @@ curl http://localhost:8080/actuator/metrics/reservations.created
 Après déploiement, chaque `POST /reservations` génère une trace avec :
 
 ```
-▼ POST /reservations [kube-train-api]                 ~300ms
+▼ POST /reservations [kube-train-api]                  ~300ms
   ├── SELECT kube_train.trains [JDBC]                  ~2ms
   ├── INSERT kube_train.reservations [JDBC]            ~5ms
   ├── INSERT kube_train.outbox_events [JDBC]           ~3ms
   └── scheduling-1 [OutboxPoller - 5s plus tard]
-        ├── SELECT kube_train.outbox_events [JDBC]      ~2ms
-        ├── Pub/Sub publish [PubSubPublisher]           ~50ms
-        └── UPDATE kube_train.outbox_events [JDBC]      ~3ms
+        ├── SELECT kube_train.outbox_events [JDBC]     ~2ms
+        ├── Pub/Sub publish [PubSubPublisher]          ~50ms
+        └── UPDATE kube_train.outbox_events [JDBC]     ~3ms
 ```
 
 Navigation : GCP Console → Cloud Trace → Liste des traces → filtre `kube-train-api`
@@ -406,7 +406,8 @@ POST /reservations [kube-train-api]                              25,093ms (total
 ├── ReservationRepository.save                                    3,808ms
 │   └── Session.merge com.kubetrain.api.entity.Reservation        3,311ms
 │       └── SELECT kube_train.reservations                        2,155ms
-│           ↑ Hibernate vérifie si l'entité existe avant d'écrire (merge = upsert)
+│           ↑ Hibernate vérifie si l'entité existe
+│             avant d'écrire (merge = upsert)
 │
 ├── OutboxEventRepository.save                                      745µs
 │   └── Session.persist com.kubetrain.api.entity.OutboxEvent        274µs
@@ -415,7 +416,8 @@ POST /reservations [kube-train-api]                              25,093ms (total
 └── Transaction.commit                                               11ms
     ├── INSERT kube_train.reservations                             2,43ms
     └── INSERT kube_train.outbox_events                           2,277ms
-        ↑ Les 2 INSERTs dans la MÊME transaction = atomicité Outbox Pattern ✅
+        ↑ Les 2 INSERTs dans la MÊME transaction
+          atomicité Outbox Pattern ✅
 ```
 
 #### 3 insights clés de cette trace
@@ -516,7 +518,7 @@ Développeur → git push → GitHub Actions → Build image + commit tag → Gi
 │                                                        │
 │  1. mvn test (les deux services)                       │
 │  2. docker build + push → Artifact Registry            │
-│  3. sed -i "image: ...:<sha>" → git commit [skip ci]  │
+│  3. sed -i "image: ...:<sha>" → git commit [skip ci]   │
 └────────────────┬───────────────────────────────────────┘
                  │ commit image tags
                  ▼
@@ -637,22 +639,22 @@ Si le seul fichier modifié est un deployment YAML → la CI ne se déclenche PA
 **Le triangle OAuth2 :**
 
 ```
-┌──────────────────┐         ┌──────────────────────┐
-│  Client          │         │  Authorization Server│
-│  (Postman, Front)│────────►│  (Keycloak, Auth0)   │
-│                  │◄────────│                      │
-│  Obtient un JWT  │  token  │  Émet les JWT        │
-└───────┬──────────┘         └──────────────────────┘
+┌───────────────────┐         ┌───────────────────────┐
+│  Client           │         │  Authorization Server │
+│  (Postman, Front) │────────►│  (Keycloak, Auth0)    │
+│                   │◄────────│                       │
+│  Obtient un JWT   │  token  │  Émet les JWT         │
+└───────┬───────────┘         └───────────────────────┘
         │
         │ Authorization: Bearer <jwt>
         ▼
-┌──────────────────┐
-│  Resource Server │
-│  (kube-train-api)│
-│                  │
-│  Valide le JWT   │
-│  (signature JWKS)│
-└──────────────────┘
+┌───────────────────┐
+│  Resource Server  │
+│  (kube-train-api) │
+│                   │
+│  Valide le JWT    │
+│  (signature JWKS) │
+└───────────────────┘
 ```
 
 **Rôles :**
@@ -832,7 +834,7 @@ curl http://localhost:8080/secure -H "Authorization: Bearer $TOKEN" -H "X-API-KE
 │  NetworkPolicy: allow-ingress-api                           │
 │  → Autorise ingress vers kube-train-pod:8080                │
 │    - depuis namespace ingress-nginx (traffic externe)       │
-│    - depuis les pods du namespace (probes kubelet)           │
+│    - depuis les pods du namespace (probes kubelet)          │
 │                                                             │
 │  NetworkPolicy: allow-ingress-otel-collector                │
 │  → Autorise ingress vers otel-collector:4317,4318           │
