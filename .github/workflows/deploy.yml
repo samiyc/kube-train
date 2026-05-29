@@ -16,6 +16,7 @@ concurrency:
 permissions:
   contents: write  # Requis pour le commit des image tags (GitOps)
   id-token: write  # Requis pour Workload Identity Federation
+  pull-requests: write  # Requis pour la décoration SonarCloud sur les PRs
 
 env:
   PROJECT_ID: kube-train-project
@@ -45,6 +46,21 @@ jobs:
       - name: Lancer les tests notification-service (contrats consumer + tests unitaires)
         run: ./mvnw test --no-transfer-progress
         working-directory: train-notification-service
+
+      # SonarCloud : analyse qualité + couverture (lit le rapport JaCoCo généré par mvnw install)
+      # Skippé automatiquement si SONAR_TOKEN n'est pas configuré dans les secrets GitHub.
+      - name: Analyser avec SonarCloud
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "⚠️ SONAR_TOKEN non configuré — analyse SonarCloud ignorée"
+            echo "   → Settings → Secrets → Actions → Nouveau secret SONAR_TOKEN"
+            exit 0
+          fi
+          ./mvnw sonar:sonar --no-transfer-progress -Dsonar.token="$SONAR_TOKEN"
+        working-directory: kube-train-api
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build:
     name: Build & Push images

@@ -15,6 +15,11 @@
 	<description>API REST principale — réservation de trains, déployée sur GKE</description>
 	<properties>
 		<java.version>21</java.version>
+		<!-- SonarCloud : clés à aligner avec l'organisation GitHub -->
+		<sonar.organization>samiyc</sonar.organization>
+		<sonar.projectKey>samiyc_kube-train</sonar.projectKey>
+		<sonar.host.url>https://sonarcloud.io</sonar.host.url>
+		<sonar.coverage.jacoco.xmlReportPaths>${project.basedir}/target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
 	</properties>
 	<!-- Spring Cloud BOM + Google Cloud BOM : gèrent les versions transitives -->
 	<dependencyManagement>
@@ -165,6 +170,25 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+			<!-- JaCoCo : génère target/site/jacoco/jacoco.xml lu par SonarCloud -->
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<executions>
+					<execution>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>report</id>
+						<phase>test</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+					</execution>
+				</executions>
 			</plugin>
 			<!--
 				Spring Cloud Contract Maven Plugin

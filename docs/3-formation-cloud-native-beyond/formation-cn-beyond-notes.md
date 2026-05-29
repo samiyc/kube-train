@@ -919,3 +919,177 @@ Spring Security ajoute ces headers par défaut. Notre config les active explicit
 | NetworkPolicy : deny all suffit-il ? | Non. Il faut aussi des "allow" explicites sinon même les probes K8s et le DNS sont bloqués. |
 | Trivy bloque sur CRITICAL : et si c'est un faux positif ? | Fichier `.trivyignore` pour lister les CVE ignorées (avec justification en commentaire). |
 | Headers OWASP : pourquoi en mode permissif aussi ? | Défense en profondeur. Les headers protègent le navigateur même si l'authentification n'est pas active. |
+
+---
+
+## J5 — Qualité : BDD, SonarCloud & Quality Gates
+
+### Cucumber BDD — Behavior-Driven Development
+
+**Principe** : Écrire les comportements attendus en langage naturel (Gherkin) avant le code.
+Le fichier `.feature` est lisible par le PO, le QA et le dev — c'est la "spécification vivante".
+
+```
+.feature  →  Step Definitions (Java)  →  Controller / Service
+(Gherkin)     (@Given/@When/@Then)        (code réel testé via MockMvc)
+```
+
+**Vocabulaire Gherkin :**
+
+| Mot-clé | Rôle |
+|---------|------|
+| `Feature` | Fonctionnalité métier (fichier entier) |
+| `Scenario` | Cas d'usage concret |
+| `Given` | Précondition (état initial) |
+| `When` | Action (ce que l'utilisateur fait) |
+| `Then` | Vérification (résultat attendu) |
+| `And` | Chaîne une étape du même type |
+| `Scenario Outline` + `Examples` | Template paramétré (N cas de test en 1 scénario) |
+
+**Setup Maven (Spring Boot 4) :**
+```xml
+<dependency>
+    <groupId>io.cucumber</groupId>
+    <artifactId>cucumber-java</artifactId>
+    <version>7.22.0</version>
+    <scope>test</scope>
+</dependency>
+<dependency>
+    <groupId>io.cucumber</groupId>
+    <artifactId>cucumber-spring</artifactId>
+    <version>7.22.0</version>
+    <scope>test</scope>
+</dependency>
+<dependency>
+    <groupId>io.cucumber</groupId>
+    <artifactId>cucumber-junit-platform-engine</artifactId>
+    <version>7.22.0</version>
+    <scope>test</scope>
+</dependency>
+<dependency>
+    <groupId>org.junit.platform</groupId>
+    <artifactId>junit-platform-suite</artifactId>
+    <scope>test</scope>
+</dependency>
+```
+
+**Pièges rencontrés sur kube-train :**
+
+| Piège | Cause | Fix |
+|-------|-------|-----|
+| `package does not exist` | Fichiers dans `src/main/` | Toujours `src/test/java/` |
+| `@AutoConfigureMockMvc` non trouvé | SB4 change de package | `org.springframework.boot.webmvc.test.autoconfigure` |
+| `NoTestsDiscovered` | `@SelectPackages` cherche des classes JUnit | `@SelectClasspathResource("features")` |
+| `illegal character: '\ufeff'` | BOM UTF-8 Windows | `new UTF8Encoding($false)` en PowerShell |
+| `@Autowired` faux positif IntelliJ | Classe sans `@Component` | `@SuppressWarnings("SpringJavaAutowiredMembersInspection")` — NE PAS mettre `@Component` (brise les autres tests via composant scan) |
+
+**Pattern MockMvc dans les steps :**
+```java
+// État partagé entre les étapes d'un même scénario
+private ResultActions resultActions;
+
+// WHEN — stocke le résultat pour les assertions du THEN
+@When("je reserve un billet pour {string} sur le train {string}")
+public void jeReserveUnBillet(String name, String trainId) throws Exception {
+    this.resultActions = mockMvc.perform(post("/reservations")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""{"passengerName": "%s", "trainId": "%s"}""".formatted(name, trainId)));
+}
+
+// GIVEN — ne stocke PAS dans resultActions (précondition passive)
+@Given("le train {string} existe avec des places disponibles")
+public void leTrainExiste(String trainId) throws Exception {
+    mockMvc.perform(get("/trains/{id}", trainId)).andExpect(status().isOk());
+}
+```
+
+---
+
+### SonarCloud — Analyse qualité continue
+
+**C'est quoi SonarCloud ?**
+Service cloud (SaaS) qui analyse le code source à chaque push et mesure :
+- **Bugs** : erreurs potentielles à l'exécution
+- **Vulnerabilities** : failles de sécurité (OWASP)
+- **Code Smells** : mauvaises pratiques (complexité, duplication…)
+- **Coverage** : % de lignes couvertes par les tests (via JaCoCo)
+- **Duplications** : code copié/collé
+
+```
+GitHub push  →  CI (mvnw test)  →  JaCoCo génère jacoco.xml
+                                →  mvnw sonar:sonar  →  SonarCloud
+                                                       → Quality Gate PASS/FAIL
+```
+
+**Quality Gate** = ensemble de seuils qui bloquent le merge si non atteints.
+Exemple : coverage > 60%, 0 bugs, 0 vulnérabilités critiques.
+
+**Setup kube-train :**
+
+1. Propriétés dans `pom.xml` :
+```xml
+<sonar.organization>samiyc</sonar.organization>
+<sonar.projectKey>samiyc_kube-train</sonar.projectKey>
+<sonar.host.url>https://sonarcloud.io</sonar.host.url>
+<sonar.coverage.jacoco.xmlReportPaths>${project.basedir}/target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+```
+
+2. JaCoCo dans `pom.xml` (génère le rapport de couverture) :
+```xml
+<plugin>
+    <groupId>org.jacoco</groupId>
+    <artifactId>jacoco-maven-plugin</artifactId>
+    <executions>
+        <execution><goals><goal>prepare-agent</goal></goals></execution>
+        <execution>
+            <id>report</id>
+            <phase>test</phase>
+            <goals><goal>report</goal></goals>
+        </execution>
+    </executions>
+</plugin>
+```
+
+3. GitHub Actions (job `test`, après les tests) :
+```yaml
+- name: Analyser avec SonarCloud
+  run: |
+    if [ -z "$SONAR_TOKEN" ]; then
+      echo "⚠️ SONAR_TOKEN non configuré — analyse ignorée"
+      exit 0
+    fi
+    ./mvnw sonar:sonar --no-transfer-progress -Dsonar.token="$SONAR_TOKEN"
+  working-directory: kube-train-api
+  env:
+    SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+4. Secret GitHub : `SONAR_TOKEN` → Settings → Secrets → Actions
+
+**JaCoCo vs SonarCloud — rôles distincts :**
+
+| Outil | Rôle | Output |
+|-------|------|--------|
+| JaCoCo | Mesure la couverture à l'exécution des tests | `target/site/jacoco/jacoco.xml` |
+| SonarCloud | Lit le rapport JaCoCo + analyse le code | Dashboard web + Quality Gate |
+
+JaCoCo = instrument de mesure. SonarCloud = tableau de bord d'interprétation.
+
+**Lancer l'analyse en local :**
+```bash
+cd kube-train-api
+./mvnw test sonar:sonar -Dsonar.token=<ton_token>
+```
+
+---
+
+### Points clés entretien J5
+
+| Question | Réponse |
+|----------|---------|
+| BDD vs TDD ? | TDD = test avant code (unitaire, dev-centric). BDD = comportement en langage naturel (collaboratif, lisible par le PO). BDD utilise Gherkin + Cucumber, TDD utilise JUnit directement. |
+| `@Given` vs `@When` vs `@Then` en Java ? | Fonctionnellement identiques (alias). La convention : Given = setup state, When = action, Then = assertion. L'ordre dans le `.feature` est documentaire. |
+| Pourquoi JaCoCo ET SonarCloud ? | JaCoCo mesure la couverture (bytes instrumentés à l'exécution). SonarCloud interprète + centralise + historise + applique des Quality Gates. Sonar sans JaCoCo = analyse statique sans coverage. |
+| Quality Gate bloquant : bonne pratique ? | Oui en production. En formation : `continue-on-error` ou condition `if [ -z "$SONAR_TOKEN" ]` pour rendre l'étape optionnelle pendant le setup. |
+| Cucumber `Scenario Outline` ? | Template paramétré. Chaque ligne du tableau `Examples` génère un scénario distinct. Évite la duplication de scénarios quasi-identiques. |
