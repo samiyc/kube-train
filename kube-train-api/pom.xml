@@ -15,6 +15,8 @@
 	<description>API REST principale — réservation de trains, déployée sur GKE</description>
 	<properties>
 		<java.version>21</java.version>
+		<!-- Override Tomcat version pour CVE-2026-41293/43512/43515 (Spring Boot 4.0.6 = 11.0.21, fix = 11.0.22) -->
+		<tomcat.version>11.0.22</tomcat.version>
 		<!-- SonarCloud : clés à aligner avec l'organisation GitHub -->
 		<sonar.organization>samiyc</sonar.organization>
 		<sonar.projectKey>samiyc_kube-train</sonar.projectKey>
