@@ -19,14 +19,17 @@ public class ReservationSteps {
     @Autowired
     private MockMvc mockMvc;
 
+    // Etat partage entre les etapes d un meme scenario (Given → When → Then)
     private ResultActions resultActions;
 
     // ==================== GIVEN ====================
 
     @Given("le train {string} existe avec des places disponibles")
     public void leTrainExisteAvecDesPlaces(String trainId) throws Exception {
-        resultActions = mockMvc.perform(get("/trains/{id}", trainId));
-        resultActions.andExpect(status().isOk());
+        // Precondition : verifie que le train est accessible
+        // Ne stocke PAS dans resultActions — ce n est pas le resultat a verifier dans le Then
+        mockMvc.perform(get("/trains/{id}", trainId))
+               .andExpect(status().isOk());
     }
 
     // ==================== WHEN ====================
