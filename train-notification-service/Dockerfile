@@ -13,6 +13,8 @@ RUN mvn clean package -DskipTests
 # Alpine utilise musl libc → SIGSEGV au démarrage (netty_tcnative SSLContext crash).
 FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
+# Patch les CVE OS (Ubuntu 22.04 jammy) sans changer de base image
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/opentelemetry-javaagent.jar opentelemetry-javaagent.jar
 COPY --from=build /app/target/train-notification-service-0.0.1-SNAPSHOT.jar app.jar
 EXPOSE 8081

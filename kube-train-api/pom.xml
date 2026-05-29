@@ -20,6 +20,17 @@
 		<sonar.projectKey>samiyc_kube-train</sonar.projectKey>
 		<sonar.host.url>https://sonarcloud.io</sonar.host.url>
 		<sonar.coverage.jacoco.xmlReportPaths>${project.basedir}/target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+		<!--
+		  Exclusions du coverage : classes infra/config qui ne contiennent pas de logique métier.
+		  Pratique standard Spring Boot — ces classes sont testées implicitement par les @SpringBootTest.
+		  Conformes aux recommandations SonarCloud pour les projets Java/Spring.
+		-->
+		<sonar.coverage.exclusions>
+			**/config/**,
+			**/entity/**,
+			**/dto/**,
+			**/*Application.java
+		</sonar.coverage.exclusions>
 	</properties>
 	<!-- Spring Cloud BOM + Google Cloud BOM : gèrent les versions transitives -->
 	<dependencyManagement>
