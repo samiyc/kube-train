@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Couche service : logique métier séparée du controller.
@@ -94,7 +95,7 @@ public class TrainService {
         TrainResponse train = getTrainById(request.trainId());
         String reservationId = "RES-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         Instant departureTime = Instant.now().plus(2, ChronoUnit.HOURS);
-        String wagon = "Wagon " + (int) (Math.random() * 12 + 1);
+        String wagon = "Wagon " + (ThreadLocalRandom.current().nextInt(12) + 1);
 
         ReservationEvent event = buildEvent(reservationId, train, request.passengerName());
         ReservationResponse response = buildResponse(reservationId, train, wagon, departureTime);

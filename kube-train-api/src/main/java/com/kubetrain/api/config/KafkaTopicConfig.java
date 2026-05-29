@@ -39,6 +39,7 @@ public class KafkaTopicConfig {
     private String bootstrapServers;
 
     @Bean
+    @SuppressWarnings("java:S5738")  // ADD_TYPE_INFO_HEADERS déprécié mais pas d'alternative sans breaking change
     public ProducerFactory<String, Object> producerFactory() {
         return new DefaultKafkaProducerFactory<>(Map.of(
                 ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,

@@ -29,6 +29,7 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     @Bean
+    @SuppressWarnings({"java:S112", "java:S1130"})  // throws Exception requis par l'API Spring Security
     public SecurityFilterChain securedFilterChain(HttpSecurity http) throws Exception {
         http
             // Stateless : pas de session HTTP (chaque requête porte son JWT)

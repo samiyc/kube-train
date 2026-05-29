@@ -54,9 +54,9 @@ class KafkaReservationEventPublisherTest {
         publisher.publish(event);
 
         verify(kafkaTemplate).send(
-                eq(KafkaReservationEventPublisher.TOPIC),
-                eq("RES-001"),
-                eq(event)
+                KafkaReservationEventPublisher.TOPIC,
+                "RES-001",
+                event
         );
     }
 

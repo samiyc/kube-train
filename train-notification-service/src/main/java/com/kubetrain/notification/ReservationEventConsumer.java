@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.Set;
@@ -91,8 +92,8 @@ public class ReservationEventConsumer {
     private ReservationEvent deserialize(String payload) {
         try {
             return objectMapper.readValue(payload, ReservationEvent.class);
-        } catch (Exception e) {
-            throw new RuntimeException("Impossible de désérialiser l'événement : " + payload, e);
+        } catch (JacksonException e) {
+            throw new IllegalStateException("Impossible de désérialiser l'événement : " + payload, e);
         }
     }
 }

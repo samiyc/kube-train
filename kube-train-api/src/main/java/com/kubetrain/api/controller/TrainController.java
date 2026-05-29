@@ -9,7 +9,6 @@ import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
@@ -77,11 +76,9 @@ public class TrainController {
     }
 
     @Operation(summary = "Détail d'un train", description = "Retourne les informations d'un train par son identifiant")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Train trouvé"),
-            @ApiResponse(responseCode = "404", description = "Train introuvable",
-                    content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    })
+    @ApiResponse(responseCode = "200", description = "Train trouvé")
+    @ApiResponse(responseCode = "404", description = "Train introuvable",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @GetMapping("/trains/{id}")
     public ResponseEntity<TrainResponse> getTrain(
             @Parameter(description = "Identifiant du train", example = "TGV-7042")
@@ -92,14 +89,12 @@ public class TrainController {
     // ==================== Réservations (écriture) ====================
 
     @Operation(summary = "Réserver un billet", description = "Crée une réservation pour un train donné")
-    @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Réservation créée",
-                    headers = @Header(name = "Location", description = "URL de la réservation créée")),
-            @ApiResponse(responseCode = "400", description = "Données invalides",
-                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
-            @ApiResponse(responseCode = "404", description = "Train introuvable",
-                    content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    })
+    @ApiResponse(responseCode = "201", description = "Réservation créée",
+            headers = @Header(name = "Location", description = "URL de la réservation créée"))
+    @ApiResponse(responseCode = "400", description = "Données invalides",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    @ApiResponse(responseCode = "404", description = "Train introuvable",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @PostMapping("/reservations")
     public ResponseEntity<ReservationResponse> createReservation(
             @Valid @RequestBody CreateReservationRequest request) {
@@ -114,11 +109,9 @@ public class TrainController {
     }
 
     @Operation(summary = "Consulter une réservation")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Réservation trouvée"),
-            @ApiResponse(responseCode = "404", description = "Réservation introuvable",
+    @ApiResponse(responseCode = "200", description = "Réservation trouvée")
+    @ApiResponse(responseCode = "404", description = "Réservation introuvable",
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    })
     @GetMapping("/reservations/{id}")
     public ResponseEntity<ReservationResponse> getReservation(
             @Parameter(description = "Identifiant de la réservation", example = "RES-A1B2C3D4")
@@ -131,11 +124,9 @@ public class TrainController {
 
     @Operation(summary = "Zone sécurisée",
             description = "Endpoint protégé par clé API. Envoyer le header X-API-KEY.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Accès autorisé"),
-            @ApiResponse(responseCode = "401", description = "Clé API manquante ou invalide",
-                    content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
-    })
+    @ApiResponse(responseCode = "200", description = "Accès autorisé")
+    @ApiResponse(responseCode = "401", description = "Clé API manquante ou invalide",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     @GetMapping("/secure")
     public ResponseEntity<WelcomeResponse> secureZone(
             @Parameter(description = "Clé API d'authentification", required = true)

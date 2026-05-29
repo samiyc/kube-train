@@ -23,6 +23,7 @@ import org.springframework.security.web.SecurityFilterChain;
 public class PermissiveSecurityConfig {
 
     @Bean
+    @SuppressWarnings({"java:S112", "java:S1130"})  // throws Exception requis par l'API Spring Security
     public SecurityFilterChain permissiveFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())

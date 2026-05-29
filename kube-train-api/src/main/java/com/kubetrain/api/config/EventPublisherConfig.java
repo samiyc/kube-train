@@ -25,11 +25,6 @@ public class EventPublisherConfig {
     @Bean
     @ConditionalOnMissingBean(ReservationEventPublisher.class)
     public ReservationEventPublisher noOpPublisher() {
-        return new ReservationEventPublisher() {
-            @Override
-            public void publish(ReservationEvent event) {
-                log.debug("[EVENT-PUBLISHER-CONF] Kafka non configuré — événement ignoré : {}", event.reservationId());
-            }
-        };
+        return event -> log.debug("[EVENT-PUBLISHER-CONF] Kafka non configuré — événement ignoré : {}", event.reservationId());
     }
 }

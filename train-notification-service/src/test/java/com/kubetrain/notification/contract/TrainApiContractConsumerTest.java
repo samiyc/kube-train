@@ -58,10 +58,9 @@ class TrainApiContractConsumerTest {
         Map<String, Object> train = restTemplate.getForObject(
                 BASE_URL + "/trains/TGV-7042", Map.class);
 
-        assertThat(train).isNotNull();
-        assertThat(train.get("id")).isEqualTo("TGV-7042");
-        assertThat(train.get("origin")).isEqualTo("Paris Gare du Nord");
-        assertThat(train.get("destination")).isEqualTo("Lille Europe");
+        assertThat(train).containsEntry("id", "TGV-7042");
+        assertThat(train).containsEntry("origin", "Paris Gare du Nord");
+        assertThat(train).containsEntry("destination", "Lille Europe");
         assertThat(train).containsKey("price");
     }
 
@@ -90,8 +89,8 @@ class TrainApiContractConsumerTest {
                 BASE_URL + "/reservations", requestBody, Map.class);
 
         assertThat(response).isNotNull();
-        assertThat(response.get("status")).isEqualTo("CONFIRMED");
-        assertThat(response.get("trainId")).isEqualTo("TGV-7042");
+        assertThat(response).containsEntry("status", "CONFIRMED");
+        assertThat(response).containsEntry("trainId", "TGV-7042");
         assertThat(response.get("reservationId").toString()).matches("RES-[A-Z0-9]{8}");
     }
 }

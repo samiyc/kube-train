@@ -14,9 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write  # Requis pour le commit des image tags (GitOps)
-  id-token: write  # Requis pour Workload Identity Federation
-  pull-requests: write  # Requis pour la décoration SonarCloud sur les PRs
+  contents: read  # Minimal par défaut — chaque job surcharge selon ses besoins
 
 env:
   PROJECT_ID: kube-train-project
@@ -30,6 +28,9 @@ jobs:
   test:
     name: Tests Maven
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # Décoration SonarCloud sur les PRs
     steps:
       - uses: actions/checkout@v4
 
@@ -66,6 +67,9 @@ jobs:
     name: Build & Push images
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Workload Identity Federation
 
     steps:
       - uses: actions/checkout@v4
@@ -167,6 +171,9 @@ jobs:
     name: Deploy to GKE
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Workload Identity Federation
 
     steps:
       - uses: actions/checkout@v4
@@ -294,6 +301,8 @@ jobs:
     name: GitOps — Commit image tags
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Commit des image tags (GitOps)
 
     steps:
       - uses: actions/checkout@v4
