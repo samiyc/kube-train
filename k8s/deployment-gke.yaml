@@ -26,7 +26,7 @@ spec:
       automountServiceAccountToken: false  # K8s SA token non requis (auth via GKE metadata server)
       containers:
       - name: api-container
-        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api:413d4c66111debe8d900226575aa0f626235f4ee
+        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api:72c4cc227c6c4e7917f41096fe987bf31ee9a527
         # GKE pull depuis Artifact Registry (auth gérée automatiquement par GKE)
         # IMAGE_TAG_PLACEHOLDER est remplacé dynamiquement par GitHub Actions (git SHA)
         imagePullPolicy: IfNotPresent
