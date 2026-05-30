@@ -34,10 +34,6 @@ On garde le wrapper Maven (mvnw), c'est une bonne pratique
 
 .sdkmanrc
 
---- GitHub (Copilot instructions) ---
-
-.github/copilot-instructions.md
-
 --- OS ---
 
 .DS_Store
