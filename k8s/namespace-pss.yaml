@@ -1,0 +1,25 @@
+# F4-J1 : Pod Security Standards sur le namespace default (Minikube)
+# enforce=baseline : bloque les pods avec privileges dangereux
+# audit/warn=restricted : signale l'écart vers le niveau restricted sans bloquer
+#
+# ⚠️ Attention si d'autres pods tournent dans default (postgres, etc.) :
+#    vérifier leur compatibilité baseline avant d'apply.
+#
+# Appliquer avec : kubectl apply -f k8s/namespace-pss.yaml
+# Ou via labels directs :
+#   kubectl label namespace default \
+#     pod-security.kubernetes.io/enforce=baseline \
+#     pod-security.kubernetes.io/audit=restricted \
+#     pod-security.kubernetes.io/warn=restricted \
+#     --overwrite
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: default
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest

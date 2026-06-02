@@ -1,0 +1,32 @@
+# F4-J1 : ServiceAccount dédié + RBAC minimaliste pour kube-train-api
+# Principe du moindre privilège : get sur un secret précis uniquement
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-train-api-sa
+  # Sur GKE : annoter avec le SA GCP pour Workload Identity (voir deployment-gke.yaml)
+  # annotations:
+  #   iam.gke.io/gcp-service-account: 399291708401-compute@developer.gserviceaccount.com
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kube-train-api-secret-reader
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["kube-train-secrets"]  # accès restreint à CE secret uniquement
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-train-api-secret-reader-binding
+subjects:
+  - kind: ServiceAccount
+    name: kube-train-api-sa
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kube-train-api-secret-reader

@@ -1,0 +1,40 @@
+# F4-J1 : LimitRange + ResourceQuota pour le namespace default (Minikube)
+#
+# LimitRange : injecte des defaults CPU/mémoire si un container n'en spécifie pas,
+#              et pose des bornes min/max par container.
+#
+# ResourceQuota : plafond global du namespace (nombre de pods, mémoire totale).
+#
+# Rappel :
+#   - LimitRange agit par objet individuel (container)
+#   - ResourceQuota plafonne la consommation agrégée du namespace
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: kube-train-default-limits
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 100m
+        memory: 256Mi
+      default:
+        cpu: 500m
+        memory: 512Mi
+      min:
+        cpu: 50m
+        memory: 128Mi
+      max:
+        cpu: "1"
+        memory: 768Mi
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: kube-train-quota
+spec:
+  hard:
+    pods: "4"            # postgres (1) + kube-train-api (2 replicas) + notification (1)
+    limits.memory: 4Gi  # marge suffisante pour Minikube (éviter les blocages intempestifs)
+    requests.cpu: "2"

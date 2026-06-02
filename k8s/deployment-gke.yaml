@@ -24,6 +24,19 @@ spec:
         app: kube-train-pod
     spec:
       automountServiceAccountToken: false  # K8s SA token non requis (auth via GKE metadata server)
+      # F4-J1 : SA dédié (Workload Identity annoté dans rbac-gke.yaml)
+      serviceAccountName: kube-train-api-sa
+      # F4-J1 : hardening PSS restricted (runAsNonRoot, readOnlyRootFilesystem, drop ALL)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: tmp
+          emptyDir: {}
       containers:
       - name: api-container
         image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api:f562dc1626c3b068c466fb9e52c79ef9cc47ef19
@@ -32,7 +45,16 @@ spec:
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
-        
+        # F4-J1 : securityContext container
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
         #HPA
         resources:
           requests:
@@ -118,6 +140,9 @@ spec:
           value: "none"
         - name: OTEL_LOGS_EXPORTER
           value: "none"
+        # F4-J1 : /tmp writable pour Spring Boot (readOnlyRootFilesystem: true)
+        - name: JAVA_TOOL_OPTIONS
+          value: "-Djava.io.tmpdir=/tmp"
 
       # Sidecar Cloud SQL Auth Proxy
       # Intercepte les connexions JDBC sur 127.0.0.1:5432 et les route de façon sécurisée vers Cloud SQL.
@@ -141,3 +166,8 @@ spec:
             memory: "128Mi"
         securityContext:
           runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          # Note : cloud-sql-proxy écrit dans /tmp → readOnlyRootFilesystem non appliqué ici

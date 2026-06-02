@@ -207,14 +207,19 @@ jobs:
           cluster_name: ${{ env.GKE_CLUSTER }}
           location: ${{ env.REGION }}
 
-      # Workload Identity — annotation sur le K8s SA "default"
-      # Perdue à chaque re-création de cluster (ressource K8s, pas GCP).
+      # Workload Identity — annotation sur le K8s SA dédié "kube-train-api-sa"
+      # F4-J1 : on n'annote plus "default" mais le SA dédié par workload.
       # --overwrite rend la commande idempotente (safe même si déjà annotée).
       # Sans cette annotation, le Cloud SQL Auth Proxy reçoit un token sans identité GCP → 403.
-      - name: Configurer Workload Identity (annoter le K8s SA default)
+      - name: Configurer Workload Identity (annoter kube-train-api-sa)
         if: steps.cluster_check.outputs.exists == 'true'
         run: |
-          kubectl annotate serviceaccount default \
+          kubectl apply -f k8s/rbac-gke.yaml
+          kubectl annotate serviceaccount kube-train-api-sa \
+            iam.gke.io/gcp-service-account=399291708401-compute@developer.gserviceaccount.com \
+            --namespace=default \
+            --overwrite
+          kubectl annotate serviceaccount notification-sa \
             iam.gke.io/gcp-service-account=399291708401-compute@developer.gserviceaccount.com \
             --namespace=default \
             --overwrite

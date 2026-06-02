@@ -1,0 +1,51 @@
+# F4-J1 : ServiceAccount dédié + RBAC pour kube-train-api (GKE)
+# Annotation Workload Identity : lie le SA Kubernetes au SA GCP (compute SA)
+# pour que le pod puisse accéder aux APIs GCP (Cloud SQL, Pub/Sub, Secret Manager)
+# sans clé JSON.
+#
+# Workload Identity setup (à exécuter une seule fois) :
+#   gcloud iam service-accounts add-iam-policy-binding \
+#     399291708401-compute@developer.gserviceaccount.com \
+#     --role=roles/iam.workloadIdentityUser \
+#     --member="serviceAccount:kube-train-project.svc.id.goog[default/kube-train-api-sa]"
+#
+# Puis annoter via pipeline ou kubectl (voir .github/workflows/deploy.yml) :
+#   kubectl annotate serviceaccount kube-train-api-sa \
+#     iam.gke.io/gcp-service-account=399291708401-compute@developer.gserviceaccount.com
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-train-api-sa
+  annotations:
+    iam.gke.io/gcp-service-account: 399291708401-compute@developer.gserviceaccount.com
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kube-train-api-secret-reader
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["kube-train-secrets"]  # accès restreint à CE secret uniquement
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-train-api-secret-reader-binding
+subjects:
+  - kind: ServiceAccount
+    name: kube-train-api-sa
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kube-train-api-secret-reader
+---
+# SA dédié pour le notification-service (pas d'accès secret K8s requis)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: notification-sa
+  annotations:
+    iam.gke.io/gcp-service-account: 399291708401-compute@developer.gserviceaccount.com
