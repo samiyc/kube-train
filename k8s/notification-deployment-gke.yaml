@@ -44,7 +44,7 @@ spec:
       automountServiceAccountToken: false  # K8s SA token non requis (auth via GKE metadata server)
       containers:
       - name: notification-container
-        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/train-notification-service:ccebdcc20c4c919b1ca565ce1ee6fc6ea8a15ebf
+        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/train-notification-service:f562dc1626c3b068c466fb9e52c79ef9cc47ef19
         imagePullPolicy: Always
         ports:
         - containerPort: 8081
