@@ -12,8 +12,8 @@ Hands-on Kubernetes/cloud-native training project (5-day program). A Spring Boot
 - `docs/readme.md` — Course roadmap and canonical cheat-sheet. Consult before suggesting CLI workflows.
 - `docs/1-formation-kubernetes-minikube/` — `runbook.md` (Minikube deployment runbook), `formation-minikube-plan.md` (Kubernetes/Minikube training plan).
 - `docs/2-formation-cloud-native/` — `runbook.md` (GCP deployment runbook), `formation-cloud-native-notes.md` (revision notes: J1–J5), `formation-cloud-native-plan.md` (5-day training plan and architecture diagrams), `qcm-fin-formation/` (end-of-training quizzes).
-- `docs/3-formation-cloud-native-beyond/` — `runbook.md` (ops quotidiennes GCP + setup F3 par journée), `formation-cn-beyond-notes.md` (revision notes), `formation-cn-beyond-plan.md` (5-day plan), `qcm/` (QCMs par journée).
-- `docs/4-formation-platform-engineering/` — `formation-platform-engineering-plan.md` (5-day plan: Sécurité K8s/RBAC, Helm, Terraform, Istio, SRE), `formation-platform-engineering-notes.md` (revision notes), `runbook.md` (procédures ops), `qcm/` (QCMs par journée), `tp/` (énoncés TP).
+- `docs/3-formation-cloud-native-beyond/` — `runbook.md` (ops quotidiennes GCP + setup F3 par journée), `formation-cn-beyond-notes.md` (revision notes), `formation-cn-beyond-plan.md` (5-day plan), `qcm/` (QCMs par journée), `extra/` (Terraform vs Ansible, outils révision, roadmap certifs, tips GCP).
+- `docs/4-formation-platform-engineering/` — `formation-platform-engineering-plan.md` (5-day plan: Sécurité K8s/RBAC, Helm, Terraform, Istio, SRE), `runbook.md` (procédures ops). Organisé par jour : `J1-securite-rbac/`, `J2-helm-packaging/`, `J3-terraform-iac/`, `J4-istio-mesh/`, `J5-sre-observabilite/` — chaque dossier contient `notes-Jx.md`, `qcm-Jx.md`, `tp-Jx-*.md`, `corrections/`.
 
 ## Build & run
 
