@@ -54,6 +54,10 @@ spec:
       - name: api-container
         image: kube-train-api:v5  # 👈 Changer la version de l'image ici
         imagePullPolicy: Never
+        # F4-J1 : override ENTRYPOINT — skip javaagent OTel (pas de collector local en Minikube)
+        # Sur GKE deployment-gke.yaml conserve l'ENTRYPOINT original avec -javaagent
+        command: ["java"]
+        args: ["-jar", "app.jar"]
         ports:
         - containerPort: 8080
         securityContext:

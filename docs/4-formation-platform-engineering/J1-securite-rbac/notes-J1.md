@@ -388,3 +388,64 @@ spec:
 - Savoir distinguer `LimitRange` et `ResourceQuota`.
 - Savoir reconnaître quand un init container est adapté… et quand il ne l'est pas.
 
+---
+
+### 8) Pièges rencontrés en validation E2E Minikube (F4-J1)
+
+Ces points ne sont pas dans les théories standards mais se rencontrent dès la première mise en pratique.
+
+#### Piège 1 — ResourceQuota dans un namespace partagé
+
+**Symptôme** : `ReplicaFailure: FailedCreate` + `ProgressDeadlineExceeded`. Le nouveau pod n'est jamais créé.
+
+**Cause** : `quota.yaml` a été dimensionné pour un namespace propre (postgres + 2 API + notification = 4 pods). En Minikube, le namespace `default` contenait aussi la stack de monitoring installée en F3 (Prometheus, Grafana, Alertmanager, etc.) — soit ~9 pods avant même le déploiement.
+
+**Règle** : ResourceQuota est vérifiée à l'admission de chaque nouveau pod. Les pods existants au moment de la création du quota ne sont pas expulsés, mais tout nouveau pod est bloqué si la limite est atteinte.
+
+**Fix** : compter tous les pods du namespace (monitoring inclus) + laisser une marge pour le rolling update (`maxSurge: 1` par défaut = 1 pod temporaire supplémentaire). Valeur retenue : `pods: "6"` pour ce namespace.
+
+**Leçon production** : en prod, chaque équipe a son namespace dédié. Le monitoring (`monitoring` namespace) ne cohabite pas avec l'app. La collision vient de l'usage du namespace `default` pour tout.
+
+#### Piège 2 — Rolling update bloqué : pourquoi les anciens pods ne sont pas supprimés
+
+**Symptôme** : 3 pods kube-train visibles (`kubectl get pods`) — 2 anciens Running + 1 nouveau CrashLoopBackOff — qui durent indéfiniment.
+
+**Cause** : Kubernetes ne supprime les anciens pods qu'une fois les nouveaux `Ready`. Si le nouveau pod est en CrashLoopBackOff (jamais Ready), le rolling update est bloqué et les anciens sont conservés pour maintenir le service.
+
+```
+Ancien RS (2 pods Running) ──┐
+                             ├── service continue de répondre
+Nouveau RS (1 pod crashé) ───┘
+```
+
+`kubectl rollout status` affiche `Waiting for 1 out of 2 new replicas to have been updated` indéfiniment.
+
+**Fix** : corriger la cause racine du crash (image corrompue, config manquante) puis `kubectl apply` pour créer un nouveau ReplicaSet.
+
+#### Piège 3 — Docker `ADD https://` et le cache avec `--no-cache`
+
+**Symptôme** : après un `docker build --no-cache`, l'image buildée contient toujours un fichier OTel corrompu (0 octet ou partiel).
+
+**Cause** : Docker/BuildKit cache les layers `ADD https://` en se basant sur les headers HTTP (ETag/Last-Modified). Même avec `--no-cache`, si le serveur renvoie le même ETag, BuildKit peut réutiliser la layer cachée.
+
+**Vérification** : `docker run --rm <image> ls -la /app/opentelemetry-javaagent.jar` (attention : si l'ENTRYPOINT est `java -jar`, la commande `ls` devient un argument Java — utiliser `--entrypoint sh` à la place).
+
+**Fix** : pour forcer un vrai re-téléchargement, utiliser un `ARG CACHEBUST=$(date +%s)` avant le `ADD`, ou télécharger en dehors du build et utiliser `COPY`.
+
+#### Piège 4 — Override ENTRYPOINT/CMD par environnement
+
+**Contexte** : le Dockerfile charge l'agent OTel via ENTRYPOINT : `java -javaagent:/app/opentelemetry-javaagent.jar -jar app.jar`. En Minikube il n'y a pas de collector OTel — l'agent génère du bruit (erreurs `Failed to export` toutes les ~15s).
+
+**Solution** : surcharger l'ENTRYPOINT dans `deployment.yaml` (Minikube uniquement) sans reconstruire l'image :
+
+```yaml
+containers:
+  - name: api-container
+    command: ["java"]
+    args: ["-jar", "app.jar"]
+```
+
+`deployment-gke.yaml` conserve l'ENTRYPOINT original (avec javaagent). C'est le pattern standard pour des comportements différents par environnement sans multiplier les images.
+
+**À retenir** : `command` dans K8s = override de `ENTRYPOINT` Docker. `args` = override de `CMD` Docker.
+

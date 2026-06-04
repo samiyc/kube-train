@@ -35,6 +35,6 @@ metadata:
   name: kube-train-quota
 spec:
   hard:
-    pods: "4"            # postgres (1) + kube-train-api (2 replicas) + notification (1)
-    limits.memory: 4Gi  # marge suffisante pour Minikube (éviter les blocages intempestifs)
+    pods: "6"            # node-exporter (1) + postgres (1) + kube-train-api (2) + marge rolling update (2)
+    limits.memory: 4Gi
     requests.cpu: "2"

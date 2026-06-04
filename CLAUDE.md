@@ -8,6 +8,12 @@ Hands-on Kubernetes/cloud-native training project (5-day formation program, curr
 
 Formation progression: F1 (Minikube) → F2 (Cloud Native GKE) → F3 (Beyond: OTel, ArgoCD, OAuth2) → **F4 (Platform Engineering: RBAC, Helm, Terraform, Istio, SRE)** — currently on F4-J2 (Helm).
 
+## Environment
+
+- **Windows** : Claude Code + IntelliJ s'exécutent sur Windows (PowerShell), projet dans `C:\DEVDIR\GITHUB\kube-train`
+- **WSL** : toutes les commandes `minikube`, `docker`, `kubectl`, `gcloud` se lancent depuis WSL (`wsl` ou terminal Ubuntu)
+- Minikube utilise le driver Docker dans WSL
+
 ## Build & test commands
 
 ```bash
