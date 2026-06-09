@@ -11,8 +11,9 @@ Formation progression: F1 (Minikube) → F2 (Cloud Native GKE) → F3 (Beyond: O
 ## Environment
 
 - **Windows** : Claude Code + IntelliJ s'exécutent sur Windows (PowerShell), projet dans `C:\DEVDIR\GITHUB\kube-train`
-- **WSL** : toutes les commandes `minikube`, `docker`, `kubectl`, `gcloud` se lancent depuis WSL (`wsl` ou terminal Ubuntu)
+- **WSL** : toutes les commandes `minikube`, `docker`, `kubectl`, `gcloud`, **`helm`** se lancent depuis WSL (`wsl` ou terminal Ubuntu)
 - Minikube utilise le driver Docker dans WSL
+- Chemin WSL du projet : `/mnt/c/DEVDIR/GITHUB/kube-train`
 
 ## Build & test commands
 
@@ -41,6 +42,16 @@ kubectl apply -f k8s/deployment.yaml
 ```
 
 GKE deployment is fully automated via GitHub Actions (`.github/workflows/deploy.yml`): test → build → deploy.
+
+```bash
+# Helm (F4-J2) — exécuter depuis WSL, chemin /mnt/c/DEVDIR/GITHUB/kube-train
+helm lint kube-train-chart
+helm template kube-train ./kube-train-chart -f kube-train-chart/values-minikube.yaml
+helm upgrade --install kube-train ./kube-train-chart -f kube-train-chart/values-minikube.yaml
+helm upgrade --install kube-train ./kube-train-chart -f kube-train-chart/values-gke.yaml --set image.tag=$SHA --atomic
+helm history kube-train
+helm uninstall kube-train
+```
 
 ## Architecture
 
@@ -85,7 +96,7 @@ Budget cible : ≤ 5€/jour. Stratégie : `terraform destroy` en fin de journé
 | Jour | Sujet | Statut |
 |------|-------|--------|
 | **J1** | Sécurité K8s & RBAC (securityContext, PSS, SA dédiés, LimitRange, init containers) | ✅ Complété |
-| **J2** | Helm & Packaging (chart custom, templating, values multi-env, Jobs/CronJobs, ArgoCD+Helm) | ▶ En cours |
+| **J2** | Helm & Packaging (chart custom, templating, values multi-env, Jobs/CronJobs, helm --atomic) | ▶ En cours — théorie OK, TP à faire |
 | J3 | Terraform IaC GCP (provider, backend GCS, Workload Identity, pipeline PR→apply) | — |
 | J4 | Istio Service Mesh (mTLS, VirtualService canary, AuthorizationPolicy, fault injection) | — |
 | J5 | SRE pratique (SLO API Cloud Monitoring, burn rate alertes, dashboards MQL, Gatekeeper) | — |
