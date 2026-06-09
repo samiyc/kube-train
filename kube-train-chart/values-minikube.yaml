@@ -1,0 +1,44 @@
+# Overlay Minikube — image locale, pas de GCP, skip OTel javaagent
+replicaCount: 1
+
+image:
+  repository: kube-train-api
+  tag: "v5"
+  pullPolicy: Never   # image buildée localement dans le daemon Docker Minikube
+
+# Skip l'agent OTel (pas de collector local en Minikube)
+command: ["java"]
+args: ["-jar", "app.jar"]
+
+service:
+  type: NodePort
+  port: 80
+
+resources:
+  requests:
+    cpu: "200m"
+    memory: "256Mi"
+    ephemeral-storage: "1Gi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+config:
+  trainMessage: "Mode Minikube — démo locale"
+  springProfilesActive: "postgres"
+  gcpProjectId: ""
+  loggingStructuredFormatConsole: ""
+  otelServiceName: "kube-train-api"
+  otelExporterOtlpEndpoint: ""
+  otelExporterOtlpProtocol: "grpc"
+  otelResourceAttributes: ""
+  otelMetricsExporter: "none"
+  otelLogsExporter: "none"
+  javaTmpDir: "-Djava.io.tmpdir=/tmp"
+
+# Pas de sidecar Cloud SQL Proxy en Minikube (postgres est un pod séparé)
+cloudSqlProxy:
+  enabled: false
+
+cronjob:
+  enabled: false

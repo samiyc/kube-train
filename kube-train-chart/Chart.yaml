@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kube-train-chart
+description: Chart Helm pour l'API kube-train (Spring Boot 4 + Cloud SQL Proxy GKE)
+type: application
+version: 0.1.0
+appVersion: "4.0.0"

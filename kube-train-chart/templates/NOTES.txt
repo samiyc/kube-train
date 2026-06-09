@@ -1,0 +1,23 @@
+kube-train déployé avec succès !
+
+Release : {{ .Release.Name }}
+Namespace : {{ .Release.Namespace }}
+Image : {{ .Values.image.repository }}:{{ .Values.image.tag }}
+Service type : {{ .Values.service.type }}
+
+{{- if contains "NodePort" .Values.service.type }}
+
+Accès Minikube :
+  minikube service {{ include "kube-train-chart.fullname" . }} --url
+{{- else if contains "LoadBalancer" .Values.service.type }}
+
+Récupérer l'IP publique :
+  kubectl get svc {{ include "kube-train-chart.fullname" . }} -w
+  curl http://<EXTERNAL-IP>/trains
+{{- end }}
+
+Vérifier les pods :
+  kubectl get pods -l app.kubernetes.io/name={{ include "kube-train-chart.name" . }}
+
+Logs :
+  kubectl logs -l app.kubernetes.io/name={{ include "kube-train-chart.name" . }} -c api-container --tail=50

@@ -1,0 +1,115 @@
+# Valeurs par défaut — kube-train-chart
+# Surcharger avec -f values-minikube.yaml ou -f values-gke.yaml
+
+# Fixe le nom de toutes les ressources Kubernetes à "kube-train"
+# Sans cet override : le nom serait "<release>-kube-train-chart" (ex: kube-train-kube-train-chart)
+fullnameOverride: "kube-train"
+
+replicaCount: 1
+
+image:
+  repository: kube-train-api   # overridé par chaque env (Minikube: tag local, GKE: Artifact Registry)
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Override ENTRYPOINT Docker (Minikube uniquement : skip l'agent OTel)
+# Laisser vide [] sur GKE pour utiliser l'ENTRYPOINT du Dockerfile
+command: []
+args: []
+
+containerPort: 8080
+
+# SA existant créé par k8s/rbac.yaml — le chart ne le crée PAS
+serviceAccount:
+  name: kube-train-api-sa
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+revisionHistoryLimit: 5
+
+# securityContext pod-level (F4-J1 : PSS restricted)
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+# securityContext container-level (F4-J1)
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: "200m"
+    memory: "256Mi"
+    ephemeral-storage: "1Gi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+# Probes — chemins et seuils configurables par env
+probes:
+  startup:
+    path: /actuator/health
+    failureThreshold: 50
+    periodSeconds: 5
+  liveness:
+    path: /actuator/health
+    periodSeconds: 10
+    failureThreshold: 3
+  readiness:
+    path: /actuator/health
+    periodSeconds: 5
+    failureThreshold: 3
+
+service:
+  type: ClusterIP
+  port: 80
+
+# Variables d'environnement non-sensibles (injectées via ConfigMap)
+config:
+  trainMessage: "Bienvenue sur kube-train"
+  springProfilesActive: "default"
+  gcpProjectId: ""
+  loggingStructuredFormatConsole: ""
+  otelServiceName: "kube-train-api"
+  otelExporterOtlpEndpoint: ""
+  otelExporterOtlpProtocol: "grpc"
+  otelResourceAttributes: ""
+  otelMetricsExporter: "none"
+  otelLogsExporter: "none"
+  javaTmpDir: "-Djava.io.tmpdir=/tmp"
+
+# Sidecar Cloud SQL Auth Proxy (GKE uniquement)
+cloudSqlProxy:
+  enabled: false
+  connectionName: "kube-train-project:europe-west1:kube-train-db"
+  image: "gcr.io/cloud-sql-connectors/cloud-sql-proxy:2"
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+      ephemeral-storage: "256Mi"
+    limits:
+      cpu: "100m"
+      memory: "128Mi"
+
+# CronJob (Étape 4 TP)
+cronjob:
+  enabled: false
+  schedule: "*/5 * * * *"
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
+  backoffLimit: 2
+  activeDeadlineSeconds: 60
+  image: curlimages/curl:8.8.0

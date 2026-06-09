@@ -1,0 +1,75 @@
+# Overlay GKE — image Artifact Registry, Cloud SQL Proxy, OTel complet
+replicaCount: 1
+
+image:
+  repository: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api
+  tag: "latest"   # remplacé par --set image.tag=$GIT_SHA dans GitHub Actions
+  pullPolicy: IfNotPresent
+
+# Pas d'override ENTRYPOINT sur GKE — l'agent OTel est chargé par le Dockerfile
+command: []
+args: []
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 0        # évite 2 pods simultanés (quota GKE Autopilot limité)
+    maxUnavailable: 1  # tue l'ancien avant de créer le nouveau
+
+service:
+  type: LoadBalancer
+  port: 80
+
+resources:
+  requests:
+    cpu: "200m"
+    memory: "512Mi"
+    ephemeral-storage: "1Gi"
+  limits:
+    cpu: "500m"
+    memory: "768Mi"
+
+# Probes GKE : startupProbe étendu (Spring Boot 4 + OTel ~180s sur Autopilot)
+probes:
+  startup:
+    path: /actuator/health
+    failureThreshold: 50
+    periodSeconds: 5
+  liveness:
+    path: /actuator/health
+    periodSeconds: 10
+    failureThreshold: 3
+  readiness:
+    path: /actuator/health
+    periodSeconds: 5
+    failureThreshold: 3
+
+config:
+  trainMessage: "🚨 GREVE : Aucun train ne circule."
+  springProfilesActive: "postgres,gcp"
+  gcpProjectId: "kube-train-project"
+  loggingStructuredFormatConsole: "ecs"
+  otelServiceName: "kube-train-api"
+  otelExporterOtlpEndpoint: "http://otel-collector-service:4317"
+  otelExporterOtlpProtocol: "grpc"
+  otelResourceAttributes: "k8s.namespace.name=default,k8s.deployment.name=kube-train"
+  otelMetricsExporter: "none"
+  otelLogsExporter: "none"
+  javaTmpDir: "-Djava.io.tmpdir=/tmp"
+
+# Sidecar Cloud SQL Auth Proxy (GKE uniquement)
+cloudSqlProxy:
+  enabled: true
+  connectionName: "kube-train-project:europe-west1:kube-train-db"
+  image: "gcr.io/cloud-sql-connectors/cloud-sql-proxy:2"
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+      ephemeral-storage: "256Mi"
+    limits:
+      cpu: "100m"
+      memory: "128Mi"
+
+cronjob:
+  enabled: false
