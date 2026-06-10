@@ -80,6 +80,9 @@ service:
 config:
   trainMessage: "Bienvenue sur kube-train"
   springProfilesActive: "default"
+  # Vide = utilise la valeur hardcodée dans application-postgres.properties (127.0.0.1:5432 pour Cloud SQL Proxy GKE)
+  # Minikube surcharge avec jdbc:postgresql://postgres-service:5432/kube_train
+  springDatasourceUrl: ""
   gcpProjectId: ""
   loggingStructuredFormatConsole: ""
   otelServiceName: "kube-train-api"

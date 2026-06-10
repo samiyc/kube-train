@@ -5,6 +5,9 @@ metadata:
   labels:
     {{- include "kube-train-chart.labels" . | nindent 4 }}
 data:
+  {{- if .Values.config.springDatasourceUrl }}
+  SPRING_DATASOURCE_URL: {{ .Values.config.springDatasourceUrl | quote }}
+  {{- end }}
   TRAIN_MESSAGE: {{ .Values.config.trainMessage | quote }}
   SPRING_PROFILES_ACTIVE: {{ .Values.config.springProfilesActive | quote }}
   GCP_PROJECT_ID: {{ .Values.config.gcpProjectId | quote }}

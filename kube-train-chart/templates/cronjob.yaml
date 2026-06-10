@@ -1,0 +1,27 @@
+{{- if .Values.cronjob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "kube-train-chart.fullname" . }}-outbox-cleanup
+  labels:
+    {{- include "kube-train-chart.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cronjob.schedule | quote }}
+  successfulJobsHistoryLimit: {{ .Values.cronjob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronjob.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.cronjob.backoffLimit }}
+      activeDeadlineSeconds: {{ .Values.cronjob.activeDeadlineSeconds }}
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: outbox-cleanup
+              image: {{ .Values.cronjob.image }}
+              command:
+                - /bin/sh
+                - -c
+                - >-
+                  curl -fsS http://{{ include "kube-train-chart.fullname" . }}:{{ .Values.service.port }}/actuator/health
+{{- end }}

@@ -26,6 +26,8 @@ resources:
 config:
   trainMessage: "Mode Minikube — démo locale"
   springProfilesActive: "postgres"
+  # Surcharge application-postgres.properties qui pointe vers 127.0.0.1:5432 (Cloud SQL Proxy GKE)
+  springDatasourceUrl: "jdbc:postgresql://postgres-service:5432/postgres"
   gcpProjectId: ""
   loggingStructuredFormatConsole: ""
   otelServiceName: "kube-train-api"
