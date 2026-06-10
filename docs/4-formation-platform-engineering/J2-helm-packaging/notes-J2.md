@@ -378,7 +378,169 @@ Le chart couvre **l'API** uniquement. Ce qui reste en dehors du chart (déployé
 
 ---
 
-### 9) Points clés entretien J2
+### 9) Helm sur GKE — est-ce qu'on l'utilisera aussi en production ?
+
+**Oui.** Le chart `kube-train-chart` est conçu pour les deux environnements.
+
+#### Situation actuelle
+Le pipeline GitHub Actions (`deploy.yml`) déploie encore avec `kubectl apply -f k8s/deployment-gke.yaml`. C'est ce qui sera remplacé par Helm.
+
+#### Commande dans le pipeline CI/CD (à venir J3/J4)
+
+```bash
+helm upgrade --install kube-train ./kube-train-chart \
+  -f kube-train-chart/values-gke.yaml \
+  --set image.tag=$GIT_SHA \
+  --rollback-on-failure \
+  --timeout 5m
+```
+
+- `$GIT_SHA` : injecté par GitHub Actions (`${{ github.sha }}`)
+- `--rollback-on-failure` : rollback automatique si les pods ne passent pas `Ready` dans le timeout
+- `values-gke.yaml` : image Artifact Registry, CloudSQL Proxy, OTel, profil `postgres,gcp`
+
+#### Ce qui change entre Minikube et GKE dans `values-gke.yaml`
+
+| Paramètre | Minikube | GKE |
+|---|---|---|
+| `image.repository` | `kube-train-api` | `europe-west1-docker.pkg.dev/...` |
+| `image.pullPolicy` | `Never` | `IfNotPresent` |
+| `service.type` | `NodePort` | `LoadBalancer` |
+| `cloudSqlProxy.enabled` | `false` | `true` |
+| `config.springProfilesActive` | `postgres` | `postgres,gcp` |
+| `config.springDatasourceUrl` | `jdbc:postgresql://postgres-service:5432/postgres` | vide (127.0.0.1:5432 via proxy) |
+| `strategy.maxSurge` | `1` | `0` (évite 2 pods simultanés sur Autopilot) |
+
+#### Pourquoi `maxSurge: 0` sur GKE Autopilot ?
+
+GKE Autopilot provisionne des nœuds à la demande. Avec `maxSurge: 1`, K8s crée le nouveau pod AVANT de tuer l'ancien — ça demande temporairement 2× les ressources. Sur un cluster Autopilot sans nœuds pré-provisionnés, ce pod supplémentaire reste `Pending` pendant 2-3 minutes le temps que le nœud soit provisionné. Avec `maxSurge: 0, maxUnavailable: 1` : K8s tue l'ancien pod PUIS crée le nouveau — cela implique une interruption brève mais évite l'attente de nœud.
+
+---
+
+### 10) Erreurs rencontrées en TP et corrections
+
+#### Erreur 1 — Conflit d'ownership ConfigMap
+```
+ConfigMap "kube-train-config" in namespace "default" exists and cannot be imported
+label validation error: missing key "app.kubernetes.io/managed-by": must be set to "Helm"
+```
+
+**Cause** : la ConfigMap avait été créée manuellement via `kubectl apply -f k8s/configmap.yaml` sans les métadonnées Helm. Helm refuse d'adopter des ressources qu'il ne "possède" pas.
+
+**Règle** : lors d'une migration `kubectl` → `Helm`, toutes les ressources gérées par le chart doivent être supprimées avant le premier `helm install`, ou annotées/labellisées manuellement pour adoption.
+
+**Correction** :
+```bash
+kubectl delete configmap kube-train-config
+helm upgrade --install kube-train ./kube-train-chart -f values-minikube.yaml
+```
+
+---
+
+#### Erreur 2 — Secret incomplet (DB_USERNAME manquant)
+```
+Warning: spec.containers{api-container}: Error: CreateContainerConfigError
+```
+
+**Cause** : le Secret `kube-train-secrets` avait 2 clés (`API_KEY` + `DB_PASSWORD`) créées lors de F4-J1. Notre chart en référence 3 (`API_KEY`, `DB_USERNAME`, `DB_PASSWORD`). Kubernetes ne peut pas créer le container car un `secretKeyRef` pointe vers une clé inexistante.
+
+**À retenir** : `CreateContainerConfigError` = référence à une clé Secret ou ConfigMap inexistante. Différent de `CrashLoopBackOff` (le container démarre mais crashe).
+
+**Correction** :
+```bash
+kubectl patch secret kube-train-secrets \
+  --type='json' \
+  -p='[{"op":"add","path":"/data/DB_USERNAME","value":"'$(echo -n postgres | base64)'"}]'
+```
+
+---
+
+#### Erreur 3 — `spring.datasource.url` hardcodé vers Cloud SQL Proxy
+```
+Caused by: java.net.ConnectException: Connection refused at 127.0.0.1:5432
+```
+
+**Cause** : `application-postgres.properties` contient `spring.datasource.url=jdbc:postgresql://127.0.0.1:5432/kube_train`. Cette URL est correcte sur GKE (Cloud SQL Auth Proxy sidecar écoute sur localhost:5432), mais fausse en Minikube où postgres est sur `postgres-service:5432`.
+
+**Mécanisme de la correction** : Spring Boot applique la priorité **env var > .properties file**. La variable d'environnement `SPRING_DATASOURCE_URL` (relaxed binding : `SPRING_DATASOURCE_URL` → `spring.datasource.url`) surcharge la valeur du fichier de propriétés.
+
+**Correction** : ajout conditionnel dans `templates/configmap.yaml` :
+```yaml
+{{- if .Values.config.springDatasourceUrl }}
+SPRING_DATASOURCE_URL: {{ .Values.config.springDatasourceUrl | quote }}
+{{- end }}
+```
+
+Et dans `values-minikube.yaml` :
+```yaml
+config:
+  springDatasourceUrl: "jdbc:postgresql://postgres-service:5432/postgres"
+```
+
+`values-gke.yaml` laisse `springDatasourceUrl: ""` → la clé n'est pas injectée → `.properties` reprend la main avec `127.0.0.1:5432`.
+
+---
+
+#### Erreur 4 — Mauvais mot de passe PostgreSQL
+```
+FATAL: password authentication failed for user "postgres"
+```
+
+**Cause** : lors du patch du Secret, on a mis `DB_PASSWORD=postgres` alors que le pod PostgreSQL Minikube est configuré avec `POSTGRES_PASSWORD: "root"` (cf `k8s/postgres-deployment.yaml`).
+
+**À retenir** : le Secret Minikube est distinct du Secret GKE (Cloud SQL a ses propres credentials). En Minikube, le mot de passe postgres est défini dans la variable d'environnement du container postgres, pas dans un Secret K8s.
+
+**Correction** :
+```bash
+kubectl patch secret kube-train-secrets \
+  --type='json' \
+  -p='[{"op":"replace","path":"/data/DB_PASSWORD","value":"'$(echo -n root | base64)'"}]'
+```
+
+---
+
+#### Erreur 5 — Warning PSS sur le container CronJob
+```
+Warning: would violate PodSecurity "restricted:latest":
+  allowPrivilegeEscalation != false (container "outbox-cleanup" ...)
+  unrestricted capabilities (container "outbox-cleanup" ...)
+  runAsNonRoot != true ...
+```
+
+**Cause** : le container `outbox-cleanup` (image `curlimages/curl`) n'a pas de `securityContext`. Le namespace `default` est en `warn: restricted`, donc K8s affiche un avertissement — mais ne bloque pas (enforce est à `baseline`).
+
+**Non bloquant** pour le TP. Pour aller en production, il faudrait ajouter :
+```yaml
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop: ["ALL"]
+```
+
+---
+
+#### Erreur 6 — `--atomic` déprécié en Helm 4
+```
+Flag --atomic has been deprecated, use --rollback-on-failure instead
+```
+
+**Cause** : Helm 4.x renomme le flag. Le comportement est identique.
+
+**Correction** : remplacer `--atomic` par `--rollback-on-failure` dans tous les scripts.
+
+```bash
+# Helm 3 / début Helm 4 :
+helm upgrade --install kube-train . --atomic --timeout 5m
+
+# Helm 4.x :
+helm upgrade --install kube-train . --rollback-on-failure --timeout 5m
+```
+
+---
+
+### 11) Points clés entretien J2
 
 | Question | Réponse courte |
 |---|---|
@@ -389,7 +551,7 @@ Le chart couvre **l'API** uniquement. Ce qui reste en dehors du chart (déployé
 | **Où va `backoffLimit` dans un CronJob ?** | Dans `jobTemplate.spec.backoffLimit`, pas dans `spec` du CronJob ni dans le pod template. |
 | **Quelle est la portée d'un `RoleBinding` qui référence un `ClusterRole` ?** | Uniquement dans le namespace du `RoleBinding` — rappel J1. |
 
-#### Mini-checklist CKAD J2
+#### Mini-checklist CKAD J2 (mise à jour post-TP)
 
 - [ ] `helm create`, `helm lint`, `helm template`
 - [ ] Écrire une expression `{{ .Values.x }}` et la tester avec `helm template`
