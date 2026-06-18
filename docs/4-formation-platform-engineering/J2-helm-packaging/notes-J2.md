@@ -4,6 +4,26 @@
 
 ---
 
+## Glossaire — Acronymes J2
+
+| Acronyme | Signification | Contexte |
+|---|---|---|
+| CKAD | Certified Kubernetes Application Developer | Certification Linux Foundation — focus développeur K8s |
+| CI/CD | Continuous Integration / Continuous Delivery | Pipeline automatisé : test → build → deploy |
+| SHA | Secure Hash Algorithm | Identifiant de commit Git (ex: `64d9199`) — utilisé comme image tag dans le pipeline |
+| GKE | Google Kubernetes Engine | Service Kubernetes managé sur Google Cloud Platform |
+| PSS | Pod Security Standards | Profils de sécurité pod (Baseline/Restricted) — cf. notes J1 |
+| SA | ServiceAccount | Identité K8s d'un pod — référencé dans les Helm templates |
+| DLT | Dead Letter Topic | Topic de renvoi des messages Kafka/Pub/Sub non consommables |
+| DLQ | Dead Letter Queue | Synonyme de DLT dans l'écosystème Pub/Sub / Helm templates |
+| OTel | OpenTelemetry | Framework d'observabilité (traces, métriques, logs) — standard CNCF |
+| GitOps | Git-based Operations | Paradigme : Git comme source de vérité unique pour les déploiements |
+| ArgoCD | Argo Continuous Delivery | Opérateur GitOps K8s — observe Git, applique en continu |
+| HPA | Horizontal Pod Autoscaler | Composant K8s qui ajuste le nombre de réplicas automatiquement |
+| GCS | Google Cloud Storage | Service de stockage objet GCP (backend Terraform — sera détaillé en J3) |
+
+---
+
 ### 0) Pourquoi Helm ?
 
 **Problème avec les manifests plats (`k8s/`)** :

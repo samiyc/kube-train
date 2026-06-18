@@ -5,6 +5,33 @@
 
 ---
 
+## Glossaire — Acronymes J1
+
+| Acronyme | Signification | Contexte |
+|---|---|---|
+| K8s | Kubernetes | Plateforme d'orchestration de containers |
+| GKE | Google Kubernetes Engine | Service Kubernetes managé sur Google Cloud Platform |
+| PSS | Pod Security Standards | Trois profils de sécurité pod : Privileged / Baseline / Restricted |
+| PSP | PodSecurityPolicy | Ancêtre des PSS, déprécié depuis K8s 1.25 |
+| PSA | Pod Security Admission | Admission controller qui enforces les PSS sur les namespaces |
+| RBAC | Role-Based Access Control | Contrôle d'accès : qui peut faire quoi sur quelles ressources K8s |
+| SA | ServiceAccount | Identité K8s d'un pod pour s'authentifier auprès de l'API server |
+| KSA | Kubernetes ServiceAccount | Synonyme de SA, utilisé pour distinguer de GSA (Google Service Account) |
+| GSA | Google Service Account | Identité GCP (IAM) pour accéder aux services Google Cloud |
+| JWT | JSON Web Token | Token signé contenant des claims — monté dans chaque pod par K8s |
+| GID | Group ID | Identifiant Unix du groupe (`fsGroup`, `runAsGroup`) |
+| UID | User ID | Identifiant Unix de l'utilisateur (`runAsUser`) |
+| OOM | Out of Memory | Pod tué par le kernel car dépassement de `limits.memory` → STATUS `OOMKilled` |
+| HPA | Horizontal Pod Autoscaler | Composant K8s qui ajuste le nombre de réplicas automatiquement |
+| PVC | Persistent Volume Claim | Demande de volume persistant (par opposition à `emptyDir` éphémère) |
+| RS | ReplicaSet | Objet K8s qui assure un nombre de replicas de pods (créé par Deployment) |
+| IPC | Inter-Process Communication | Mécanisme Linux de communication inter-processus (`hostIPC` = risque sécurité) |
+| JVM | Java Virtual Machine | Environnement d'exécution Java — a besoin d'écrire dans `/tmp` |
+| OTel | OpenTelemetry | Framework d'observabilité (traces, métriques, logs) — standard CNCF |
+| E2E | End-to-End | Test de bout en bout — valide le flux complet de l'application |
+
+---
+
 ### 0) Architecture multi-couche K8s — où se situe le Namespace
 
 ```

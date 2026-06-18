@@ -5,6 +5,27 @@
 
 ---
 
+## Glossaire — Acronymes J3
+
+| Acronyme | Signification | Contexte |
+|---|---|---|
+| IaC | Infrastructure as Code | Paradigme : décrire, versionner et déployer l'infrastructure en code |
+| HCL | HashiCorp Configuration Language | Langage déclaratif de Terraform — fichiers `.tf` |
+| GCS | Google Cloud Storage | Service de stockage objet GCP — backend Terraform pour le state |
+| KSA | Kubernetes ServiceAccount | Identité pod côté K8s dans la liaison Workload Identity |
+| GSA | Google Service Account | Identité IAM côté GCP dans la liaison Workload Identity |
+| OIDC | OpenID Connect | Protocole d'authentification sur OAuth 2.0 — utilisé par Workload Identity Federation |
+| WIF | Workload Identity Federation | Mécanisme GCP : échange d'un token K8s contre un token GCP sans clé JSON |
+| IAM | Identity and Access Management | Service GCP de gestion des identités et des droits d'accès |
+| VPC | Virtual Private Cloud | Réseau privé virtuel isolé dans GCP |
+| DLQ | Dead Letter Queue | File de renvoi des messages non livrables — Pub/Sub `train-reservations-dlq` |
+| CI/CD | Continuous Integration / Continuous Delivery | Pipeline automatisé — workflow GitHub Actions Terraform |
+| GKE | Google Kubernetes Engine | Service Kubernetes managé sur Google Cloud Platform |
+| PR | Pull Request | Demande de fusion de code — déclenche `terraform plan` dans le workflow GitOps |
+| SQL | Structured Query Language | Langage de requête base de données — Cloud SQL = PostgreSQL managé GCP |
+
+---
+
 ## 1. Terraform — Concepts fondamentaux
 
 ### Le cycle de vie standard
@@ -109,6 +130,7 @@ terraform {
 ```
 
 **Avantages du backend GCS** :
+
 | Feature | Bénéfice |
 |---|---|
 | State centralisé | Toute l'équipe (et la CI) voient le même état |
