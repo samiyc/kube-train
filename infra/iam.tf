@@ -50,3 +50,9 @@ resource "google_project_iam_member" "github_actions_container_admin" {
   role    = "roles/container.admin"
   member  = "serviceAccount:github-actions-sa@${var.project_id}.iam.gserviceaccount.com"
 }
+
+resource "google_project_iam_member" "github_actions_secret_accessor" {
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:github-actions-sa@${var.project_id}.iam.gserviceaccount.com"
+}
