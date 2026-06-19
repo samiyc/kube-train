@@ -216,11 +216,11 @@ jobs:
         run: |
           kubectl apply -f k8s/rbac-gke.yaml
           kubectl annotate serviceaccount kube-train-api-sa \
-            iam.gke.io/gcp-service-account=399291708401-compute@developer.gserviceaccount.com \
+            iam.gke.io/gcp-service-account=kube-train-api-sa@kube-train-project.iam.gserviceaccount.com \
             --namespace=default \
             --overwrite
           kubectl annotate serviceaccount notification-sa \
-            iam.gke.io/gcp-service-account=399291708401-compute@developer.gserviceaccount.com \
+            iam.gke.io/gcp-service-account=notification-sa@kube-train-project.iam.gserviceaccount.com \
             --namespace=default \
             --overwrite
 
