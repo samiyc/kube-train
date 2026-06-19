@@ -2,7 +2,9 @@
 FROM maven:3.9.6-eclipse-temurin-21 AS build
 WORKDIR /app
 # Agent OTel en premier pour profiter du cache Docker (indépendant du code source)
-ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.26.1/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
+# curl --fail : échoue proprement si le download rate (ADD silencieux sur redirect multi-hop)
+RUN curl -L --fail -o /app/opentelemetry-javaagent.jar \
+    https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.26.1/opentelemetry-javaagent.jar
 COPY pom.xml .
 COPY src ./src
 RUN mvn clean package -DskipTests
