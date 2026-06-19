@@ -20,3 +20,9 @@ resource "google_service_account_iam_member" "api_workload_identity" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[kube-train/kube-train-api-sa]"
 }
+
+resource "google_project_iam_member" "github_actions_container_admin" {
+  project = var.project_id
+  role    = "roles/container.admin"
+  member  = "serviceAccount:github-actions-sa@${var.project_id}.iam.gserviceaccount.com"
+}
