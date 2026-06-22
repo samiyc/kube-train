@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Hands-on Kubernetes/cloud-native training project (5-day formation program, currently on **F4 — Platform Engineering**). A Spring Boot 4 API (`kube-train-api/`) and a notification micro-service (`train-notification-service/`) are deployed on GKE Autopilot via GitHub Actions CI/CD. Local development uses Minikube + Docker Compose.
 
-Formation progression: F1 (Minikube) → F2 (Cloud Native GKE) → F3 (Beyond: OTel, ArgoCD, OAuth2) → **F4 (Platform Engineering: RBAC, Helm, Terraform, Istio, SRE)** — currently on F4-J2 (Helm).
+Formation progression: F1 (Minikube) → F2 (Cloud Native GKE) → F3 (Beyond: OTel, ArgoCD, OAuth2) → **F4 (Platform Engineering: RBAC, Helm, Terraform, Istio, SRE)** — currently on F4-J4 (Istio).
 
 ## Environment
 
@@ -96,9 +96,9 @@ Budget cible : ≤ 5€/jour. Stratégie : `terraform destroy` en fin de journé
 | Jour | Sujet | Statut |
 |------|-------|--------|
 | **J1** | Sécurité K8s & RBAC (securityContext, PSS, SA dédiés, LimitRange, init containers) | ✅ Complété |
-| **J2** | Helm & Packaging (chart custom, templating, values multi-env, Jobs/CronJobs, helm --atomic) | ▶ En cours — théorie OK, TP à faire |
-| J3 | Terraform IaC GCP (provider, backend GCS, Workload Identity, pipeline PR→apply) | — |
-| J4 | Istio Service Mesh (mTLS, VirtualService canary, AuthorizationPolicy, fault injection) | — |
+| **J2** | Helm & Packaging (chart custom, templating, values multi-env, Jobs/CronJobs, helm --atomic) | ✅ Complété |
+| **J3** | Terraform IaC GCP (provider, backend GCS, Workload Identity, pipeline PR→apply) | ✅ Complété |
+| **J4** | Istio Service Mesh (mTLS, VirtualService canary, AuthorizationPolicy, fault injection) | ▶ En cours |
 | J5 | SRE pratique (SLO API Cloud Monitoring, burn rate alertes, dashboards MQL, Gatekeeper) | — |
 
 ### Conventions de naming F4

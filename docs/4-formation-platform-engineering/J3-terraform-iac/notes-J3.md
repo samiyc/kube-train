@@ -378,7 +378,9 @@ resource "google_service_account_iam_member" "api_workload_identity" {
   service_account_id = google_service_account.kube_train_api.name
   role               = "roles/iam.workloadIdentityUser"
   # Format : serviceAccount:{project}.svc.id.goog[{namespace}/{ksa_name}]
-  member = "serviceAccount:${var.project_id}.svc.id.goog[kube-train/kube-train-api-sa]"
+  # ⚠️ Le namespace doit correspondre exactement au namespace K8s où tourne le pod.
+  # kube-train déploie dans le namespace "default" → [default/kube-train-api-sa]
+  member = "serviceAccount:${var.project_id}.svc.id.goog[default/kube-train-api-sa]"
 }
 ```
 
@@ -453,7 +455,8 @@ resource "google_container_cluster" "main" {
 resource "google_service_account_iam_member" "api_workload_identity" {
   service_account_id = google_service_account.kube_train_api.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[kube-train/kube-train-api-sa]"
+  # namespace "default" (pas "kube-train") — le pod tourne dans default sur kube-train
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[default/kube-train-api-sa]"
 }
 ```
 
@@ -617,3 +620,181 @@ gcloud sql instances patch kube-train-db \
 cd /mnt/c/DEVDIR/GITHUB/kube-train/infra
 terraform destroy
 ```
+
+---
+
+## 11. Erreurs et blocages rencontrés en TP — Retour d'expérience
+
+> Cette section documente les vraies erreurs rencontrées lors du TP kube-train. Chaque incident correspond à un piège réel en production.
+
+### 11.1 WIF namespace incorrect → `CrashLoopBackOff` / `Connection reset at doAuthentication`
+
+**Symptôme** : Pod en `CrashLoopBackOff`, log `FATAL: connection reset`, SQLState `08001` (échec réseau, pas auth).
+
+**Cause** : La ressource Terraform `google_service_account_iam_member` avait le mauvais namespace :
+```hcl
+# ❌ Mauvais — le pod tourne dans default, pas kube-train
+member = "serviceAccount:kube-train-project.svc.id.goog[kube-train/kube-train-api-sa]"
+
+# ✅ Correct
+member = "serviceAccount:kube-train-project.svc.id.goog[default/kube-train-api-sa]"
+```
+
+**Règle** : Le namespace dans le membre WIF doit correspondre exactement au namespace K8s où tourne le pod. Une divergence entraîne un refus silencieux du token — le Cloud SQL Auth Proxy reçoit un token sans identité GCP valide → 403 → reset TCP.
+
+**Fix immédiat sans terraform apply** :
+```bash
+kubectl annotate serviceaccount kube-train-api-sa \
+  iam.gke.io/gcp-service-account=kube-train-api-sa@kube-train-project.iam.gserviceaccount.com \
+  --namespace=default --overwrite
+kubectl rollout restart deployment/kube-train-deployment
+```
+
+---
+
+### 11.2 `github-actions-sa` sans `secretmanager.secretAccessor` → secrets vides silencieux
+
+**Symptôme** : Pod crashe avec `FATAL: password authentication failed` (SQLState `28P01` = mauvais mot de passe). Le K8s secret `kube-train-secrets` existe mais `DB_PASSWORD` est une chaîne vide.
+
+**Cause** : `github-actions-sa` n'avait pas `roles/secretmanager.secretAccessor`. La commande CI `gcloud secrets versions access latest --secret=db-password` retournait une chaîne vide **sans erreur**, puis écrasait le K8s secret avec la valeur vide.
+
+**Fix permanent dans `iam.tf`** :
+```hcl
+resource "google_project_iam_member" "github_actions_secret_accessor" {
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:github-actions-sa@${var.project_id}.iam.gserviceaccount.com"
+}
+```
+
+**Distinction SQLState** :
+- `08001` = échec connexion réseau/IAM → problème WIF ou réseau
+- `28P01` = authentification échouée → mauvais mot de passe
+
+---
+
+### 11.3 OTel JAR corrompu → `Error opening zip file or JAR manifest missing`
+
+**Symptôme** : Pod en `CrashLoopBackOff`, log `Error opening zip file or JAR manifest missing: /app/opentelemetry-javaagent.jar`.
+
+**Cause** : Le `Dockerfile` utilisait `ADD https://github.com/...` pour télécharger l'agent OTel. Docker `ADD` ne suit pas les redirects multi-hop (GitHub → redirect → Azure Blob Storage) → fichier partiel/corrompu téléchargé silencieusement.
+
+**Fix** :
+```dockerfile
+# ❌ Silencieux sur redirect multi-hop
+ADD https://github.com/open-telemetry/...v2.26.1/opentelemetry-javaagent.jar /app/
+
+# ✅ Échoue proprement au build si download raté
+RUN curl -L --fail -o /app/opentelemetry-javaagent.jar \
+    https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.26.1/opentelemetry-javaagent.jar
+```
+
+**Règle** : Toujours préférer `RUN curl --fail` à `ADD <URL>` pour les téléchargements depuis des CDN avec redirects.
+
+---
+
+### 11.4 JDBC + Cloud SQL Auth Proxy → `Connection reset at enableSSL`
+
+**Symptôme** : Log `FATAL: Connection reset`, erreur à l'étape `enableSSL`.
+
+**Cause** : Le driver JDBC PostgreSQL tentait une connexion SSL sur le proxy local (`127.0.0.1:5432`). Le Cloud SQL Auth Proxy **gère lui-même TLS** vers Cloud SQL et expose un socket TCP plain côté application — il ne supporte pas les négociations SSL entrantes.
+
+**Fix dans `application-postgres.properties`** :
+```properties
+spring.datasource.url=jdbc:postgresql://127.0.0.1:5432/kube_train?sslmode=disable
+```
+
+**Règle** : Avec Cloud SQL Auth Proxy v2, toujours ajouter `?sslmode=disable` dans l'URL JDBC. Le proxy gère le chiffrement de bout en bout côté GCP — pas besoin de SSL côté application.
+
+---
+
+### 11.5 `HikariCP` et proxy qui démarre en parallèle
+
+**Symptôme** : Pod crashe au démarrage car HikariPool ne peut pas créer une connexion initiale (le proxy Cloud SQL n'est pas encore prêt).
+
+**Fix dans `application-postgres.properties`** :
+```properties
+# -1 : le pool démarre avec 0 connexions, retente en arrière-plan
+spring.datasource.hikari.initialization-fail-timeout=-1
+spring.flyway.connect-retries=10
+spring.flyway.connect-retries-interval=5
+```
+
+**Comportement** : Avec `-1`, HikariCP ne fait pas échouer le démarrage si la DB est indisponible. La première vraie connexion aura lieu quand Flyway tente la migration — et Flyway retente jusqu'à `connect-retries` fois.
+
+---
+
+### 11.6 `CrashLoopBackOff` → timeout `kubectl rollout status --timeout=5m`
+
+**Symptôme** : CI échoue sur `kubectl rollout status deployment/kube-train-deployment --timeout=5m` avec `error: timed out waiting for the condition`.
+
+**Cause** : Kubernetes applique un backoff exponentiel entre les redémarrages (10s → 20s → 40s → 80s → 160s → **5 min max**). Après plusieurs crashs successifs, K8s attend jusqu'à 5 minutes avant de redémarrer le pod — exactement le timeout CI.
+
+**Règle** : En cas de `CrashLoopBackOff` sur un nouveau cluster, corriger d'abord la cause racine **avant** de relancer le CI. Le rollout status ne passera jamais si le pod crashe en boucle.
+
+---
+
+### 11.7 `terraform destroy` partiel — `google_sql_user` possède des objets
+
+**Symptôme** : `terraform destroy` échoue sur :
+```
+role "kube_train_user" cannot be dropped because some objects depend on it
+Details: 2 objects in database kube_train.
+```
+
+**Cause** : Hibernate (`ddl-auto=update`) crée des tables **avec `kube_train_user` comme owner**. PostgreSQL refuse de supprimer un rôle qui possède des objets. Terraform essaie de supprimer l'user avant l'instance → échec → l'instance Cloud SQL n'est **pas détruite**.
+
+**Conséquences** : L'instance Cloud SQL continue de tourner et de facturer après `terraform destroy`.
+
+**Fix** : Supprimer l'instance directement via gcloud :
+```bash
+gcloud sql instances delete kube-train-db --project=kube-train-project
+```
+
+**Alternative long terme** : En production, utiliser Flyway avec `ddl-auto=validate` (pas `update`) — les migrations sont versionnées et le rôle `kube_train_user` n'est pas owner des tables.
+
+---
+
+### 11.8 Restriction réutilisation du nom d'instance Cloud SQL après suppression
+
+**Fait** : Après suppression d'une instance Cloud SQL, GCP bloque la réutilisation du **même nom** pendant ~7 jours.
+
+**Impact** : Si `terraform destroy` supprime `kube-train-db` et qu'on recrée l'infra le lendemain, `terraform apply` échoue avec une erreur de nom déjà utilisé.
+
+**Stratégie** : Préférer **stopper** l'instance plutôt que la détruire pour les cycles destroy/recreate fréquents (formation, weekend) :
+```bash
+gcloud sql instances patch kube-train-db --activation-policy=NEVER --project=kube-train-project
+# → 0 consommation de compute, facturation réduite (~0€/h hors stockage)
+```
+
+---
+
+### 11.9 `github-actions-sa` sans `roles/container.admin` → RBAC forbidden
+
+**Symptôme** : CI échoue avec `RBAC forbidden` lors du `kubectl apply -f k8s/rbac-gke.yaml`.
+
+**Cause** : `github-actions-sa` avait `roles/container.developer` (deploy pods) mais pas `roles/container.admin` (créer Roles/RoleBindings).
+
+**Fix dans `iam.tf`** :
+```hcl
+resource "google_project_iam_member" "github_actions_container_admin" {
+  project = var.project_id
+  role    = "roles/container.admin"
+  member  = "serviceAccount:github-actions-sa@${var.project_id}.iam.gserviceaccount.com"
+}
+```
+
+---
+
+### 11.10 Git push rejeté — race condition avec les commits GitOps
+
+**Symptôme** : `git push` rejeté avec `rejected: non-fast-forward`.
+
+**Cause** : Le job CI `update-manifests` commit les image tags dans `deployment-gke.yaml` en parallèle des pushes locaux → conflit d'historique.
+
+**Pattern correct** :
+```bash
+git pull --rebase origin main && git push origin main
+```
+
+**Règle** : Toujours `pull --rebase` avant de pousser sur main quand un CI/CD commit automatiquement des fichiers (GitOps image tags, changelogs, etc.).

@@ -55,10 +55,12 @@ D) Utiliser uniquement `outputs`, car `variables` et `locals` sont redondants.
 ---
 
 ## Question 6 — [Workload Identity Federation via Terraform]
-Pour autoriser le ServiceAccount Kubernetes `kube-train-api-sa` du namespace `kube-train` à agir comme le GSA `kube-train-api-sa@kube-train-project.iam.gserviceaccount.com`, quelle ressource Terraform est la plus adaptée ?
+Pour autoriser le ServiceAccount Kubernetes `kube-train-api-sa` du namespace `default` à agir comme le GSA `kube-train-api-sa@kube-train-project.iam.gserviceaccount.com`, quelle ressource Terraform est la plus adaptée ?
+
+> ⚠️ Note : kube-train déploie dans le namespace `default` (pas `kube-train`). Le namespace dans le membre WIF doit correspondre **exactement** au namespace K8s du pod — une erreur ici est silencieuse et entraîne un `Connection reset` au démarrage.
 
 A) `google_project_iam_binding` avec `roles/container.admin`
-B) `google_service_account_iam_member` avec le rôle `roles/iam.workloadIdentityUser` et le membre `serviceAccount:kube-train-project.svc.id.goog[kube-train/kube-train-api-sa]`
+B) `google_service_account_iam_member` avec le rôle `roles/iam.workloadIdentityUser` et le membre `serviceAccount:kube-train-project.svc.id.goog[default/kube-train-api-sa]`
 C) `google_storage_bucket_iam_member` avec le rôle `roles/storage.objectAdmin`
 D) `google_pubsub_subscription_iam_member` avec le rôle `roles/pubsub.subscriber`
 
