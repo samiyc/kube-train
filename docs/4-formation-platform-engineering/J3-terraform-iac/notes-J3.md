@@ -417,8 +417,7 @@ resource "google_pubsub_subscription" "notification" {
 }
 ```
 
-**Piège Pub/Sub** : créer le topic DLQ **avant** la subscription — sinon `terraform apply` échoue sur la référence à `dead_letter_topic`.  
-Ici ce n'est pas un problème car Terraform résout l'ordre grâce aux références inter-ressources.
+**Piège Pub/Sub** : créer le topic DLQ **avant** la subscription — sinon `terraform apply` échoue sur la référence à `dead_letter_topic`. Ici ce n'est pas un problème car Terraform résout l'ordre grâce aux références inter-ressources.
 
 ---
 
