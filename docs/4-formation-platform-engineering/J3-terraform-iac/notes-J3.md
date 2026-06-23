@@ -352,41 +352,143 @@ resource "google_sql_user" "app" {
 
 ### IAM & Workload Identity
 
+> 📖 **Documentation officielle GKE** : [Workload Identity Federation for GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/workload-identity)
+
+---
+
+#### ELI5 — Ce que fait concrètement iam.tf
+
+**Le problème de base** : le pod Kubernetes a besoin d'accéder à des services GCP (Cloud SQL, Secret Manager, Pub/Sub). Comment s'authentifie-t-il sans stocker une clé secrète dans le cluster ?
+
+**L'analogie** : imagine un employé (le pod) qui veut entrer dans des bâtiments sécurisés (services GCP).
+
+- Sans WIF : l'employé doit porter une **clé physique** (fichier JSON) dans sa poche. Si elle est volée, l'accès est compromis jusqu'à révocation manuelle.
+- Avec WIF : l'employé montre son **badge entreprise** (token Kubernetes) à un guichet d'échange. Le guichet vérifie l'identité et remet un **badge visiteur temporaire** (token GCP, valide ~1h) qui s'annule automatiquement.
+
+**Les 4 ressources Terraform de iam.tf et leur rôle** :
+
+```
+iam.tf contient 4 types de blocs distincts :
+
+① google_service_account          → Crée l'identité GCP (le "badge GCP")
+② google_project_iam_member       → Donne des droits à ce badge sur les services GCP
+③ google_service_account_iam_member → Autorise le pod K8s à utiliser ce badge (le pont KSA→GSA)
+④ (annotation K8s, hors Terraform) → Dit au pod quel badge GCP utiliser
+```
+
+**Flux complet, étape par étape** :
+
+```
+1. GKE émet automatiquement un token JWT signé pour chaque pod
+   (basé sur son KSA : kube-train-api-sa dans le namespace default)
+
+2. Le Cloud SQL Auth Proxy (sidecar) lit ce token JWT
+
+3. Le proxy appelle le GCP Security Token Service (STS) :
+   "J'ai ce token K8s — donne-moi un token GCP pour kube-train-api-sa@kube-train-project.iam.gserviceaccount.com"
+
+4. GCP STS vérifie :
+   → "Est-ce que kube-train-project.svc.id.goog[default/kube-train-api-sa]
+      a le rôle roles/iam.workloadIdentityUser sur ce GSA ?"
+   → OUI (défini par google_service_account_iam_member dans iam.tf)
+
+5. GCP STS émet un token GCP court-terme (~1h) pour le GSA
+
+6. Le proxy utilise ce token pour se connecter à Cloud SQL
+
+7. Cloud SQL vérifie :
+   → "Est-ce que kube-train-api-sa@... a roles/cloudsql.client sur ce projet ?"
+   → OUI (défini par google_project_iam_member dans iam.tf)
+
+8. Connexion autorisée ✅
+```
+
+**Schéma des 3 couches IAM** :
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Kubernetes (namespace: default)                            │
+│  ServiceAccount: kube-train-api-sa                          │
+│  Annotation: iam.gke.io/gcp-service-account=kube-train-... │ ← dit QUEL badge GCP utiliser
+└────────────────────────┬────────────────────────────────────┘
+                         │ token JWT K8s
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  GCP IAM — WIF binding (google_service_account_iam_member)  │
+│  Autorise : svc.id.goog[default/kube-train-api-sa]          │
+│  Rôle : roles/iam.workloadIdentityUser                      │ ← pont KSA → GSA
+│  Sur : kube-train-api-sa@kube-train-project.iam...          │
+└────────────────────────┬────────────────────────────────────┘
+                         │ token GCP court-terme
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  GCP IAM — Project bindings (google_project_iam_member)     │
+│  GSA : kube-train-api-sa@kube-train-project.iam...          │
+│  Droits : roles/cloudsql.client                             │ ← ce que le badge autorise
+│           roles/secretmanager.secretAccessor                │
+│           roles/pubsub.publisher                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### Le HCL complet commenté
+
 ```hcl
-# GSA (Google Service Account) pour l'API
+# ① Crée l'identité GCP de l'API — "le badge GCP"
 resource "google_service_account" "kube_train_api" {
   account_id   = "kube-train-api-sa"
   display_name = "GSA pour kube-train-api"
 }
 
-# Droits Cloud SQL
+# ② Droits du badge sur les services GCP
+# Ces 3 ressources disent : "ce badge GCP peut faire X sur le projet"
 resource "google_project_iam_member" "api_cloudsql_client" {
   project = var.project_id
-  role    = "roles/cloudsql.client"
+  role    = "roles/cloudsql.client"   # se connecter à Cloud SQL via Auth Proxy
   member  = "serviceAccount:${google_service_account.kube_train_api.email}"
 }
 
-# Droits Secret Manager
 resource "google_project_iam_member" "api_secret_accessor" {
   project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
+  role    = "roles/secretmanager.secretAccessor"   # lire les secrets
   member  = "serviceAccount:${google_service_account.kube_train_api.email}"
 }
 
-# Liaison KSA → GSA (Workload Identity)
+resource "google_project_iam_member" "api_pubsub_publisher" {
+  project = var.project_id
+  role    = "roles/pubsub.publisher"   # publier des messages Pub/Sub
+  member  = "serviceAccount:${google_service_account.kube_train_api.email}"
+}
+
+# ③ Le pont KSA → GSA (Workload Identity)
+# Dit : "le pod K8s kube-train-api-sa (namespace default) EST AUTORISÉ
+#        à utiliser le badge GCP kube-train-api-sa@..."
 resource "google_service_account_iam_member" "api_workload_identity" {
   service_account_id = google_service_account.kube_train_api.name
   role               = "roles/iam.workloadIdentityUser"
-  # Format : serviceAccount:{project}.svc.id.goog[{namespace}/{ksa_name}]
-  # ⚠️ Le namespace doit correspondre exactement au namespace K8s où tourne le pod.
-  # kube-train déploie dans le namespace "default" → [default/kube-train-api-sa]
+  # ⚠️ namespace doit être EXACTEMENT celui du pod K8s
+  # Une erreur ici → Connection reset silencieux au démarrage (SQLState 08001)
   member = "serviceAccount:${var.project_id}.svc.id.goog[default/kube-train-api-sa]"
 }
 ```
 
+**④ L'annotation K8s** (gérée par le CI, pas par Terraform) :
+```bash
+# Dans deploy.yml — dit au pod quel badge GCP utiliser
+kubectl annotate serviceaccount kube-train-api-sa \
+  iam.gke.io/gcp-service-account=kube-train-api-sa@kube-train-project.iam.gserviceaccount.com \
+  --namespace=default --overwrite
+```
+
+---
+
 **Différence `google_project_iam_member` vs `google_service_account_iam_member`** :
-- `google_project_iam_member` → ajoute un rôle **sur le projet** (Cloud SQL client, Secret Accessor)
-- `google_service_account_iam_member` → ajoute un rôle **sur un GSA spécifique** (workloadIdentityUser)
+
+| Ressource | S'applique sur | Usage |
+|---|---|---|
+| `google_project_iam_member` | Le **projet GCP** entier | Donner des droits à un GSA sur les services (Cloud SQL, Pub/Sub...) |
+| `google_service_account_iam_member` | Un **GSA spécifique** | Autoriser une identité à *utiliser* ce GSA (pont KSA→GSA) |
 
 ### Artifact Registry + Pub/Sub
 
@@ -798,3 +900,177 @@ git pull --rebase origin main && git push origin main
 ```
 
 **Règle** : Toujours `pull --rebase` avant de pousser sur main quand un CI/CD commit automatiquement des fichiers (GitOps image tags, changelogs, etc.).
+
+---
+
+## 12. Pour aller plus loin — Questions avancées
+
+### 12.1 Le state Terraform peut-il être stocké en base de données (comme Flyway) ?
+
+**Oui.** Terraform supporte plusieurs types de backends, dont PostgreSQL.
+
+```hcl
+# backend.tf — state stocké dans PostgreSQL
+terraform {
+  backend "pg" {
+    conn_str = "postgres://user:password@host/dbname"
+  }
+}
+```
+
+Le backend `pg` crée une table `terraform_remote_state` et utilise les **advisory locks PostgreSQL** pour le verrouillage.
+
+**Comparaison des backends les plus courants** :
+
+| Backend | Locking | Versioning | Cas d'usage |
+|---|---|---|---|
+| `local` | Aucun | Non | Développement solo uniquement |
+| `gcs` | Objet GCS (métadonnées) | Oui (versioning bucket) | Recommandé sur GCP |
+| `pg` | Advisory locks PostgreSQL | Non natif | Si PostgreSQL déjà dans l'infra |
+| `s3` | DynamoDB (AWS) | Oui (versioning S3) | Recommandé sur AWS |
+| Terraform Cloud | Interne | Oui + chiffré | Équipes + state chiffré |
+
+**Pourquoi GCS plutôt que PostgreSQL sur GCP** :
+- GCS est managé — pas de serveur PostgreSQL à maintenir juste pour le state
+- Le versioning GCS permet de restaurer un état corrompu sans configuration supplémentaire
+- L'intégration IAM GCP est native (pas besoin de credentials DB séparées)
+- Le locking GCS est fiable même en environnement distribué
+
+**Analogie Flyway vs Terraform state** :
+
+| | Flyway | Terraform state |
+|---|---|---|
+| Stocke | L'historique des migrations SQL (ce qui a été appliqué) | La correspondance HCL ↔ ressources réelles cloud |
+| Format | Table `flyway_schema_history` | Fichier JSON (`terraform.tfstate`) |
+| Verrou | `flyway_schema_history_lock` (SQL) | Backend-dépendant (GCS metadata, advisory lock...) |
+| Source de vérité | Les fichiers de migration `.sql` | Les fichiers `.tf` |
+
+---
+
+### 12.2 Différence entre le lock GCS et un lock PostgreSQL
+
+Les deux sont des **locks advisory** : Terraform les respecte, mais un processus externe peut les ignorer. `terraform force-unlock` permet de libérer manuellement un lock bloqué.
+
+**Lock GCS** :
+- Terraform écrit un objet `.terraform.tfstate.lock.info` dans le bucket
+- Si un second `apply` démarre, il voit cet objet et refuse
+- Si le process s'arrête brutalement (crash), le lock reste → nécessite `terraform force-unlock`
+- Pas de timeout automatique (contrairement à certains backends DB)
+
+```bash
+# Libérer un lock GCS bloqué
+terraform force-unlock <lock-id>
+# L'ID est affiché dans le message d'erreur du lock
+```
+
+**Lock PostgreSQL (advisory lock)** :
+- Utilise `pg_advisory_lock(id)` — un verrou de session PostgreSQL
+- Si la connexion est coupée (crash), PostgreSQL **libère automatiquement** le lock
+- Plus robuste sur les crashes, mais nécessite une connexion DB disponible
+- Pas de versioning natif du state (sauf si le schéma PG est sauvegardé)
+
+**Résumé** :
+
+| Critère | GCS | PostgreSQL |
+|---|---|---|
+| Libération au crash | Non (manuel) | Oui (automatique) |
+| Versioning du state | Oui (bucket versioning) | Non natif |
+| Infrastructure requise | Bucket GCS (managé) | Instance PostgreSQL |
+| Sur GCP | Recommandé | Faisable mais sur-complexe |
+
+---
+
+### 12.3 `terraform.tfstate` contient des infos sensibles — peut-on externaliser les mots de passe vers Secret Manager ?
+
+**Le problème** : `sensitive = true` masque les valeurs dans les logs et le plan, mais **les valeurs sont quand même stockées en clair dans le state**. Le mot de passe Cloud SQL est lisible dans `terraform.tfstate`.
+
+```json
+// Dans terraform.tfstate (simplifié)
+{
+  "resource": "google_sql_user.app",
+  "attributes": {
+    "password": "mon-mdp-en-clair"   ← toujours présent
+  }
+}
+```
+
+**Approches pour limiter l'exposition** :
+
+**① Chiffrement du bucket GCS** (recommandé sur GCP) :
+```bash
+# Activer CMEK (Customer Managed Encryption Key) sur le bucket state
+gcloud storage buckets update gs://kube-train-terraform-state \
+  --default-encryption-key=projects/.../cryptoKeyVersions/1
+```
+Le state est chiffré au repos avec une clé Cloud KMS que vous contrôlez.
+
+**② Lire le secret depuis Secret Manager (pas le coder en variable)** :
+```hcl
+# Secret Manager comme source de vérité pour le mot de passe
+data "google_secret_manager_secret_version" "db_password" {
+  secret = "db-password"
+}
+
+resource "google_sql_user" "app" {
+  name     = "kube_train_user"
+  instance = google_sql_database_instance.main.name
+  password = data.google_secret_manager_secret_version.db_password.secret_data
+}
+```
+⚠️ La valeur sera quand même dans le state — l'avantage : Secret Manager est la source de vérité, le `.tfvars` n'est plus nécessaire.
+
+**③ Terraform Cloud / HCP Terraform** : chiffre le state côté serveur, seuls les utilisateurs autorisés peuvent le lire.
+
+**④ `writeOnly` (Terraform 1.11+)** : certains providers marquent les attributs sensibles avec `writeOnly = true` — ces valeurs ne sont **jamais** stockées dans le state. Terraform les passe à l'API mais ne les mémorise pas.
+
+**Bonne pratique pour kube-train** :
+1. Backend GCS avec versioning (déjà en place)
+2. Accès au bucket limité par IAM (seul `github-actions-sa` et les admins)
+3. Ne jamais committer `terraform.tfvars` (`.gitignore` en place)
+4. Pour la production : CMEK sur le bucket + Terraform Cloud pour l'audit
+
+---
+
+### 12.4 Valeurs `null` dans `.terraform/terraform.tfstate` — que signifient-elles ?
+
+Il existe **deux fichiers** `terraform.tfstate` à ne pas confondre :
+
+```
+infra/.terraform/terraform.tfstate   ← state LOCAL du backend (méta-config)
+infra/terraform.tfstate              ← state de l'infra (n'existe pas si backend GCS actif)
+```
+
+**`.terraform/terraform.tfstate`** (le fichier avec des `null`) est le state **local du backend Terraform CLI**. Il enregistre quelle configuration de backend est active — pas l'infra elle-même.
+
+```json
+// .terraform/terraform.tfstate — exemple typique
+{
+  "version": 3,
+  "serial": 1,
+  "lineage": "abc-123",
+  "backend": {
+    "type": "gcs",
+    "config": {
+      "bucket": "kube-train-terraform-state",
+      "prefix": "platform-engineering/dev",
+      "credentials": null,      ← null = utilise les credentials par défaut (gcloud auth)
+      "access_token": null,     ← null = non utilisé (on utilise les credentials ADC)
+      "impersonate_service_account": null  ← null = pas d'impersonation configurée
+    }
+  }
+}
+```
+
+**Les `null` signifient** : valeur non configurée explicitement → Terraform utilise la valeur par défaut ou les Application Default Credentials (ADC) de `gcloud`.
+
+**Tu ne dois pas les modifier manuellement.** Ce fichier est géré automatiquement par `terraform init`. Si tu changes la config du backend dans `versions.tf`, relancer `terraform init -reconfigure` met à jour ce fichier.
+
+**Quand ces valeurs sont-elles remplies ?**
+
+| Champ | Rempli quand |
+|---|---|
+| `credentials` | Si tu passes explicitement un fichier JSON de SA |
+| `access_token` | Si tu utilises un token OAuth2 temporaire |
+| `impersonate_service_account` | Si tu configures l'impersonation de SA |
+
+Sur GCP avec Workload Identity ou `gcloud auth application-default login`, ces champs restent `null` — c'est le comportement attendu.
