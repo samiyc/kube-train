@@ -39,7 +39,7 @@ spec:
           emptyDir: {}
       containers:
       - name: api-container
-        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api:d64803cc0a867fefaa59891061387b8e93226f81
+        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api:117aa70a710f09cce9fd512fb86d2ef472ad48ad
         # GKE pull depuis Artifact Registry (auth gérée automatiquement par GKE)
         # IMAGE_TAG_PLACEHOLDER est remplacé dynamiquement par GitHub Actions (git SHA)
         imagePullPolicy: IfNotPresent
