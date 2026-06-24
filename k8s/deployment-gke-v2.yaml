@@ -43,7 +43,7 @@ spec:
           emptyDir: {}
       containers:
       - name: api-container
-        image: IMAGE_TAG_PLACEHOLDER
+        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api:8c2489d77474a2946138e3d8c84386b3e3ac124c
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
