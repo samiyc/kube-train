@@ -409,7 +409,7 @@ iam.tf contient 4 types de blocs distincts :
 ┌─────────────────────────────────────────────────────────────┐
 │  Kubernetes (namespace: default)                            │
 │  ServiceAccount: kube-train-api-sa                          │
-│  Annotation: iam.gke.io/gcp-service-account=kube-train-... │ ← dit QUEL badge GCP utiliser
+│  Annotation: iam.gke.io/gcp-service-account=kube-train-...  │ ← dit QUEL badge GCP utiliser
 └────────────────────────┬────────────────────────────────────┘
                          │ token JWT K8s
                          ▼

@@ -1,4 +1,4 @@
-# F4-J1 : LimitRange + ResourceQuota pour le namespace default (Minikube)
+# F4-J1 : LimitRange + ResourceQuota pour le namespace default
 #
 # LimitRange : injecte des defaults CPU/mémoire si un container n'en spécifie pas,
 #              et pose des bornes min/max par container.
@@ -8,6 +8,13 @@
 # Rappel :
 #   - LimitRange agit par objet individuel (container)
 #   - ResourceQuota plafonne la consommation agrégée du namespace
+#
+# Valeurs GKE + Istio (F4-J4) :
+#   - Steady state : 3 pods (1 par déploiement), chacun avec istio-proxy sidecar
+#   - Rolling update simultané max : 3 × 2 = 6 pods (notification + otel sans maxSurge: 0)
+#   - limits.memory stable : kube-train(1.4Gi) + notification(1.1Gi) + otel(~1Gi) ≈ 3.5Gi
+#   - Marges incluses pour rolling updates partiels
+#   ⚠️  Quota ≠ coût : le coût GKE Autopilot dépend des requests des pods, pas du quota
 ---
 apiVersion: v1
 kind: LimitRange
@@ -35,6 +42,6 @@ metadata:
   name: kube-train-quota
 spec:
   hard:
-    pods: "6"            # node-exporter (1) + postgres (1) + kube-train-api (2) + marge rolling update (2)
-    limits.memory: 4Gi
-    requests.cpu: "2"
+    pods: "8"            # 3 steady state + 3 rolling update + 2 marge
+    limits.memory: 6Gi   # 3.5Gi stable + headroom rolling update
+    requests.cpu: "3"    # ~2.1 CPU steady state (750m + 600m + 700m) + marge

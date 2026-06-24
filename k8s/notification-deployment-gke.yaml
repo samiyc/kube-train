@@ -40,6 +40,9 @@ spec:
     metadata:
       labels:
         app: notification-pod
+      annotations:
+        traffic.sidecar.istio.io/excludeInboundPorts: "15020"
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: "169.254.169.254/32"
     spec:
       automountServiceAccountToken: false  # K8s SA token non requis (auth via GKE metadata server)
       # F4-J1 : SA dédié
