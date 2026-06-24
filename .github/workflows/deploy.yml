@@ -329,13 +329,19 @@ jobs:
           sed -i "s|image: ${{ env.IMAGE_NOTIFICATION }}:.*|image: ${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}|g" \
             k8s/notification-deployment-gke.yaml
 
+          # deployment-gke-v2.yaml : canary v2 — même image que v1
+          sed -i "s|image: IMAGE_TAG_PLACEHOLDER|image: ${{ env.IMAGE }}:${{ github.sha }}|g" \
+            k8s/deployment-gke-v2.yaml
+          sed -i "s|image: ${{ env.IMAGE }}:.*|image: ${{ env.IMAGE }}:${{ github.sha }}|g" \
+            k8s/deployment-gke-v2.yaml
+
           echo "✅ Tags mis à jour → ${{ github.sha }}"
 
       - name: Commit et push (GitOps)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/deployment-gke.yaml k8s/notification-deployment-gke.yaml
+          git add k8s/deployment-gke.yaml k8s/notification-deployment-gke.yaml k8s/deployment-gke-v2.yaml
           # Ne commit que s'il y a un diff (première fois ou tag différent)
           if git diff --cached --quiet; then
             echo "ℹ️ Aucun changement de tag — skip commit"

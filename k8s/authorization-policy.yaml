@@ -1,0 +1,28 @@
+# Étape 4a — AuthorizationPolicy : protège notification-pod
+#
+# Seul kube-train-api-sa (identité mTLS de l'API) peut appeler notification-service.
+# Toute autre source (même meshée) reçoit HTTP 403 Forbidden.
+#
+# Important : dès qu'une policy ALLOW existe sur un workload, le comportement par défaut
+# devient DENY pour tout ce qui ne matche pas (principe allowlist).
+#
+# Principal format : cluster.local/ns/<namespace>/sa/<serviceaccount>
+# (SPIFFE URI sans le préfixe "spiffe://")
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: notification-allow-only-api
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: notification-pod
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/default/sa/kube-train-api-sa"
+      to:
+        - operation:
+            ports: ["8081"]

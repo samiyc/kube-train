@@ -1,0 +1,49 @@
+# Étape 4b — VirtualService avec fault injection 500ms sur /reservations
+#
+# Remplace istio-canary.yaml (même nom VirtualService kube-train-api).
+# La fault injection s'applique UNIQUEMENT aux requêtes sur /reservations.
+# Les autres routes continuent à fonctionner sans latence artificielle.
+#
+# Test :
+#   time kubectl exec -n default mesh-client -c curl -- \
+#     curl -s http://kube-train-service/reservations/TEST-ID
+#   → ~500ms de plus qu'une requête normale
+#
+# ⚠️  Désactiver après le test : kubectl apply -f k8s/istio-canary.yaml
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: kube-train-api
+  namespace: default
+spec:
+  hosts:
+    - kube-train-service
+  http:
+    # Route /reservations avec fault injection 500ms (100% des requêtes)
+    - match:
+        - uri:
+            prefix: /reservations
+      fault:
+        delay:
+          fixedDelay: 0.5s
+          percentage:
+            value: 100
+      route:
+        - destination:
+            host: kube-train-service
+            subset: v1
+          weight: 90
+        - destination:
+            host: kube-train-service
+            subset: v2
+          weight: 10
+    # Toutes les autres routes — canary 90/10 sans latence
+    - route:
+        - destination:
+            host: kube-train-service
+            subset: v1
+          weight: 90
+        - destination:
+            host: kube-train-service
+            subset: v2
+          weight: 10

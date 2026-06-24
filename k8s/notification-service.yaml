@@ -1,0 +1,15 @@
+# Service ClusterIP pour train-notification-service
+# Nécessaire pour les tests mTLS Istio (étape 2) et AuthorizationPolicy (étape 4).
+# Le service de notification n'est pas exposé publiquement — uniquement intra-cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: default
+spec:
+  selector:
+    app: notification-pod
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081

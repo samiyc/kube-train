@@ -1,0 +1,19 @@
+# Étape 2 — mTLS STRICT sur notification-pod
+#
+# PeerAuthentication avec workloadSelector : seul notification-pod est ciblé.
+# Appliquer STRICT sur tout le namespace default pourrait casser OTel si son pod
+# n'a pas de sidecar (injection uniquement à la création du pod).
+#
+# Mode STRICT : tout client doit présenter un certificat mTLS valide (SPIFFE ID).
+# Un pod sans sidecar Istio → pas de certificat → connexion refusée.
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: notification-strict
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: notification-pod
+  mtls:
+    mode: STRICT

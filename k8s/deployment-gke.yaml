@@ -22,6 +22,7 @@ spec:
     metadata:
       labels:
         app: kube-train-pod
+        version: v1  # Requis par DestinationRule Istio (subset v1/v2 pour canary — étape 3)
       annotations:
         # Cloud SQL Auth Proxy gère sa propre TLS/IAM vers GCP.
         # Istio intercepte le port 5432 (includeInboundPorts: *) et tente mTLS →

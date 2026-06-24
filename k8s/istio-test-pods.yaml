@@ -1,0 +1,51 @@
+# Pods de test Istio — étape 2 (mTLS) et étape 4 (AuthorizationPolicy)
+#
+# mesh-client  : pod meshé avec sidecar Istio + SA kube-train-api-sa
+#                → identité SPIFFE : spiffe://cluster.local/ns/default/sa/kube-train-api-sa
+#                → mTLS STRICT : AUTORISÉ (certificat valide)
+#                → AuthorizationPolicy : AUTORISÉ (SA explicitement listé)
+#
+# plain-client : pod sans sidecar (sidecar.istio.io/inject: "false")
+#                → pas de certificat mTLS
+#                → mTLS STRICT : REFUSÉ (connection reset by peer)
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mesh-client
+  namespace: default
+spec:
+  serviceAccountName: kube-train-api-sa
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+  containers:
+    - name: curl
+      image: curlimages/curl:8.8.0
+      command: ["sh", "-c", "sleep 3600"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: plain-client
+  namespace: default
+  annotations:
+    sidecar.istio.io/inject: "false"
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+  containers:
+    - name: curl
+      image: curlimages/curl:8.8.0
+      command: ["sh", "-c", "sleep 3600"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]

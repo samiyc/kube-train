@@ -11,9 +11,9 @@
 #
 # Valeurs GKE + Istio (F4-J4) :
 #   - Steady state : 3 pods (1 par déploiement), chacun avec istio-proxy sidecar
-#   - Rolling update simultané max : 3 × 2 = 6 pods (notification + otel sans maxSurge: 0)
-#   - limits.memory stable : kube-train(1.4Gi) + notification(1.1Gi) + otel(~1Gi) ≈ 3.5Gi
-#   - Marges incluses pour rolling updates partiels
+#   - Canary étape 3 : + kube-train-v2 + mesh-client + plain-client = 6 pods max
+#   - limits.memory stable : kube-train(~1.4Gi) + notification(~1.1Gi) + otel(~1Gi) ≈ 3.5Gi
+#   - Canary : + v2(~1.4Gi) + test pods(~1Gi) = 6Gi supplémentaires couverts par la marge
 #   ⚠️  Quota ≠ coût : le coût GKE Autopilot dépend des requests des pods, pas du quota
 ---
 apiVersion: v1
@@ -42,6 +42,6 @@ metadata:
   name: kube-train-quota
 spec:
   hard:
-    pods: "8"            # 3 steady state + 3 rolling update + 2 marge
-    limits.memory: 6Gi   # 3.5Gi stable + headroom rolling update
-    requests.cpu: "3"    # ~2.1 CPU steady state (750m + 600m + 700m) + marge
+    pods: "10"           # 3 steady state + 1 canary v2 + 2 test pods + 4 marge rolling update
+    limits.memory: 8Gi   # 3.5Gi stable + 1.4Gi canary v2 + 1Gi test pods + 2Gi headroom
+    requests.cpu: "3"    # ~750m requests steady state + 500m canary + 250m test + marge

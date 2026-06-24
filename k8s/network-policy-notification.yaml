@@ -1,0 +1,25 @@
+# Network Policy — autorise le traffic entrant vers notification-service
+#
+# Sources autorisées : tous les pods du namespace default
+# Port autorisé : 8081 (Spring Boot notification service)
+#
+# Note : la granularité d'autorisation est ensuite assurée par Istio AuthorizationPolicy
+# (étape 4) — la NetworkPolicy laisse passer tout le monde au niveau L4,
+# Istio filtre ensuite par identité mTLS (SPIFFE) au niveau L7.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-notification
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: notification-pod
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}   # Tous les pods du namespace (api, test pods, etc.)
+      ports:
+        - protocol: TCP
+          port: 8081

@@ -1,0 +1,48 @@
+# Étape 3 — Canary deployment Istio : DestinationRule + VirtualService 90/10
+#
+# DestinationRule : définit les subsets v1/v2 en filtrant par label `version`
+# VirtualService : route 90% vers v1, 10% vers v2
+#
+# Prérequis :
+#   - deployment-gke.yaml : pod template labels contient version: v1
+#   - deployment-gke-v2.yaml : déployé et Running
+#   - Test depuis l'intérieur du mesh (kubectl exec mesh-client)
+#
+# Observabilité :
+#   kubectl logs -f deployment/kube-train-deployment-v2 -c istio-proxy \
+#     | grep '"downstream_remote_address"'
+#   → vérifier que ~10% des requêtes apparaissent dans les logs v2
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: kube-train-api
+  namespace: default
+spec:
+  host: kube-train-service
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: kube-train-api
+  namespace: default
+spec:
+  hosts:
+    - kube-train-service
+  http:
+    - route:
+        - destination:
+            host: kube-train-service
+            subset: v1
+          weight: 90
+        - destination:
+            host: kube-train-service
+            subset: v2
+          weight: 10

@@ -1,0 +1,146 @@
+# Deployment GKE — kube-train-api v2 (canary — étape 3)
+#
+# Identique à deployment-gke.yaml mais avec le label version: v2.
+# Istio DestinationRule sélectionne ce pod dans le subset "v2" → VirtualService lui route 10%.
+#
+# Observabilité du canary :
+#   kubectl logs -f -l version=v2 -c istio-proxy | grep '"method":"GET"'
+#   → compter les requêtes reçues par v2 vs v1
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-train-deployment-v2
+  labels:
+    app: kube-train
+    version: v2
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: kube-train-pod
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: kube-train-pod
+        version: v2
+      annotations:
+        traffic.sidecar.istio.io/excludeInboundPorts: "5432,15020"
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: "169.254.169.254/32"
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: kube-train-api-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      containers:
+      - name: api-container
+        image: IMAGE_TAG_PLACEHOLDER
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "512Mi"
+            ephemeral-storage: "1Gi"
+          limits:
+            cpu: "500m"
+            memory: "768Mi"
+        startupProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          failureThreshold: 50
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          periodSeconds: 5
+          failureThreshold: 3
+        envFrom:
+          - configMapRef:
+              name: kube-train-config
+          - secretRef:
+              name: kube-train-secrets
+        env:
+        - name: TRAIN_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kube-train-secrets
+              key: API_KEY
+        - name: SPRING_PROFILES_ACTIVE
+          value: "postgres,gcp"
+        - name: GCP_PROJECT_ID
+          value: "kube-train-project"
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: kube-train-secrets
+              key: DB_USERNAME
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kube-train-secrets
+              key: DB_PASSWORD
+        - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+          value: "ecs"
+        - name: OTEL_SERVICE_NAME
+          value: "kube-train-api-v2"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector-service:4317"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "grpc"
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: "k8s.namespace.name=default,k8s.deployment.name=kube-train-deployment-v2"
+        - name: OTEL_METRICS_EXPORTER
+          value: "none"
+        - name: OTEL_LOGS_EXPORTER
+          value: "none"
+        - name: JAVA_TOOL_OPTIONS
+          value: "-Djava.io.tmpdir=/tmp"
+
+      - name: cloud-sql-proxy
+        image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+        args:
+          - "--structured-logs"
+          - "--port=5432"
+          - "kube-train-project:europe-west1:kube-train-db"
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "128Mi"
+            ephemeral-storage: "256Mi"
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
