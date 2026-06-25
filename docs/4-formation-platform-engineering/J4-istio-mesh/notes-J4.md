@@ -36,28 +36,28 @@
 ### Vue d'ensemble
 
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│  CONTROL PLANE                                                      │
-│                                                                      │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │  Istiod (auto-hébergé) OU Traffic Director (Cloud Service Mesh)  │
-│  │  • Distribue les certificats mTLS (SPIFFE SVID)              │  │
-│  │  • Traduit les CRDs K8s (VS, DR, PA, AP) → config xDS        │  │
-│  │  • Pousse la config aux proxies via gRPC xDS                 │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────┬─────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────┐
+│  CONTROL PLANE                                                        │
+│                                                                       │
+│  ┌─────────────────────────────────────────────────────────────────┐  │
+│  │  Istiod (auto-hébergé) OU Traffic Director (Cloud Service Mesh) │  │
+│  │  • Distribue les certificats mTLS (SPIFFE SVID)                 │  │
+│  │  • Traduit les CRDs K8s (VS, DR, PA, AP) → config xDS           │  │
+│  │  • Pousse la config aux proxies via gRPC xDS                    │  │
+│  └─────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────┬────────────────────────────────────────┘
                                │ xDS (gRPC longue durée)
-┌──────────────────────────────▼─────────────────────────────────────┐
-│  DATA PLANE — Pods meshés                                           │
-│                                                                      │
-│  ┌───────────────────────────────────┐                              │
-│  │  Pod kube-train-api               │                              │
-│  │  ┌─────────────┐  ┌───────────┐  │                              │
-│  │  │ api-container│  │istio-proxy│  │ ← sidecar Envoy              │
-│  │  │ (port 8080) │  │(port 15001│  │   intercepte tout le trafic  │
-│  │  └─────────────┘  └───────────┘  │   via iptables              │
-│  └───────────────────────────────────┘                              │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────▼────────────────────────────────────────┐
+│  DATA PLANE — Pods meshés                                             │
+│                                                                       │
+│  ┌────────────────────────────────────┐                               │
+│  │  Pod kube-train-api                │                               │
+│  │  ┌──────────────┐ ┌──────────────┐ │                               │
+│  │  │ api-container│ │ istio-proxy  │ │ ← sidecar Envoy               │
+│  │  │ (port 8080)  │ │ (port 15001) │ │   intercepte tout le trafic   │
+│  │  └──────────────┘ └──────────────┘ │   via iptables                │
+│  └────────────────────────────────────┘                               │
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
 **Règle d'or** :
@@ -211,24 +211,24 @@ spec:
 **Techniquement** :
 
 ```
-┌───────────────────────────────────────────────────────────┐
+┌────────────────────────────────────────────────────────────┐
 │  Pod kube-train-api                                        │
 │                                                            │
-│  app-container → envoie à 10.x.x.x:8081                  │
+│  app-container → envoie à 10.x.x.x:8081                    │
 │       │                                                    │
-│       ▼ intercepté par iptables (règle REDIRECT)          │
-│  istio-proxy (port 15001 — outbound)                      │
-│       │ applique VirtualService / DestinationRule         │
+│       ▼ intercepté par iptables (règle REDIRECT)           │
+│  istio-proxy (port 15001 — outbound)                       │
+│       │ applique VirtualService / DestinationRule          │
 │       │ chiffre en mTLS avec certificat SPIFFE             │
 │       ▼                                                    │
-│  → réseau K8s → Pod notification                          │
+│  → réseau K8s → Pod notification                           │
 │                      │                                     │
-│                      ▼ intercepté par iptables (inbound)  │
-│                 istio-proxy (port 15006 — inbound)        │
-│                      │ vérifie mTLS + AuthorizationPolicy │
+│                      ▼ intercepté par iptables (inbound)   │
+│                 istio-proxy (port 15006 — inbound)         │
+│                      │ vérifie mTLS + AuthorizationPolicy  │
 │                      ▼                                     │
-│                 notification-container (port 8081)        │
-└───────────────────────────────────────────────────────────┘
+│                 notification-container (port 8081)         │
+└────────────────────────────────────────────────────────────┘
 ```
 
 **init container `istio-init`** : s'exécute avant l'app et configure les règles iptables `REDIRECT`. Tout trafic sortant va vers le port 15001, tout trafic entrant vers le port 15006. L'app ne sait pas qu'Istio existe.
