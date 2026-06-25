@@ -206,7 +206,7 @@
 
 - [ ] Helm chart `kube-train/` fonctionnel (multi-env via values)
 - [ ] Terraform `infra/` provisionne tout GKE + Cloud SQL + IAM
-- [ ] Istio mTLS + canary deployment fonctionnel
+- [x] Istio mTLS + canary deployment fonctionnel
 - [ ] 2 SLOs + alertes burn rate configurés dans Cloud Monitoring
 - [ ] Tous les pods en `securityContext: restricted` + RBAC dédié
 - [ ] 5 QCMs validés (score cible : ≥ 6/8 par jour)

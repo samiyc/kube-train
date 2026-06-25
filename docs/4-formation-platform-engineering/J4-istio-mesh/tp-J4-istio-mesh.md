@@ -5,6 +5,21 @@
 
 > Les exemples ci-dessous utilisent le namespace `kube-train`. Si vos workloads tournent encore dans `default`, remplacez simplement le namespace — mais évitez de mesh-er tout `default` en production.
 
+> **⚠️ Adaptation kube-train (Cloud Service Mesh managé)**
+>
+> Ce TP a été écrit pour un Istio auto-hébergé (`istioctl install`). Sur kube-train, le mesh est assuré par **Cloud Service Mesh (Fleet managé)** — le control plane tourne chez Google (Traffic Director), pas dans le cluster. Les adaptations appliquées :
+>
+> | TP (théorique) | Réalité kube-train |
+> |---|---|
+> | `namespace: kube-train` | `namespace: default` (workloads déjà en place) |
+> | `istioctl install --set profile=demo -y` | CSM déjà activé via Fleet — rien à installer |
+> | `kubectl label ns ... istio-injection=enabled` | `kubectl label ns default meshconfig.io/proxy-version=asm-managed-rapid` |
+> | `istioctl proxy-status` | Non disponible — vérifier via `kubectl get pods` (2/2 ou 3/3) |
+> | Propagation config ~1s | **30 à 90 secondes** (Traffic Director distribue depuis Google Cloud) |
+> | Access logs `kubectl logs -c istio-proxy` | Logs HTTP dans **Cloud Logging** — utiliser les logs app ou `pilot-agent request GET clusters` |
+>
+> Pour toutes les commandes réelles, voir le **runbook** section F4-J4 et les **notes-J4** section 10 (incidents TP).
+
 ---
 
 ## Étape 1 — Installer Istio et activer l'injection sidecar

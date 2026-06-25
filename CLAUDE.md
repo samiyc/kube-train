@@ -98,7 +98,7 @@ Budget cible : ≤ 5€/jour. Stratégie : `terraform destroy` en fin de journé
 | **J1** | Sécurité K8s & RBAC (securityContext, PSS, SA dédiés, LimitRange, init containers) | ✅ Complété |
 | **J2** | Helm & Packaging (chart custom, templating, values multi-env, Jobs/CronJobs, helm --atomic) | ✅ Complété |
 | **J3** | Terraform IaC GCP (provider, backend GCS, Workload Identity, pipeline PR→apply) | ✅ Complété |
-| **J4** | Istio Service Mesh (mTLS, VirtualService canary, AuthorizationPolicy, fault injection) | ▶ En cours |
+| **J4** | Istio Service Mesh (mTLS, VirtualService canary, AuthorizationPolicy, fault injection) | ✅ Complété |
 | J5 | SRE pratique (SLO API Cloud Monitoring, burn rate alertes, dashboards MQL, Gatekeeper) | — |
 
 ### Conventions de naming F4
