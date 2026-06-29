@@ -25,6 +25,35 @@ gcloud config get-value project  # kube-train-project
 
 ---
 
+## 🔍 Debug — Navigation pods multi-containers (GKE Autopilot)
+
+Sur GKE Autopilot les pods ont systématiquement plusieurs containers (`istio-proxy`, `cloud-sql-proxy`...).
+
+```bash
+# Lister les containers de tous les pods
+kubectl get pods -o='custom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name'
+
+# -- Exemple de retour (f4-j5) --
+# NAME                           CONTAINERS
+# kube-train-deployment-1234     api-container,cloud-sql-proxy,istio-proxy
+# notification-deployment-1234   notification-container,istio-proxy
+# otel-collector-1234            otel-collector,istio-proxy
+
+# Lister les containers d'un pod spécifique
+kubectl get pod <pod-name> -o='custom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name'
+
+# Logs d'un container spécifique
+kubectl logs <pod-name> -c <container-name>
+
+# Logs de tous les containers (avec préfixe container — indispensable pour distinguer les lignes)
+kubectl logs <pod-name> --all-containers=true --prefix=true | tail -20
+
+# Suivre les logs en temps réel (tous containers)
+kubectl logs <pod-name> --all-containers=true --prefix=true -f
+```
+
+---
+
 ## F4-J1: Sécurité Kubernetes & RBAC
 
 ```bash
