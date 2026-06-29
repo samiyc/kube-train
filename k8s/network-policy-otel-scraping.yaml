@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-otel-scraping
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: kube-train-pod
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: otel-collector
+      ports:
+        - port: 8080
+          protocol: TCP

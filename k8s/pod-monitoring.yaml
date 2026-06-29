@@ -1,0 +1,13 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: kube-train-api
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: kube-train-pod
+  endpoints:
+    - port: 8080
+      path: /actuator/prometheus
+      interval: 30s

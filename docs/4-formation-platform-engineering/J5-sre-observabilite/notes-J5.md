@@ -147,78 +147,80 @@ Sur 30 jours, à 1,44% d'erreur : budget épuisé en 30/14,4 = 2,08 jours
 │                                                                 │
 │  Service (kube-train-api)                                       │
 │    └── SLO 1 : disponibilité GET /trains (99,9%, 30j)           │
-│         ├── SLI : ratio 2xx / total (request-based)            │
-│         ├── Error budget : 43 min/mois                         │
-│         └── Alertes burn rate : 14,4× (1h) + 6× (6h)           │
+│         ├── SLI : ratio 2xx / total (request-based)             │
+│         ├── Error budget : 43 min/mois                          │
+│         └── Alertes burn rate : 14,4× (1h) + 6× (6h)            │
 │    └── SLO 2 : latence P95 POST /reservations (<300ms, 30j)     │
-│         ├── SLI : ratio requêtes < 300ms / total               │
-│         └── Alertes burn rate associées                        │
+│         ├── SLI : ratio requêtes < 300ms / total                │
+│         └── Alertes burn rate associées                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Créer un Service monitored dans Cloud Monitoring
 
+> ⚠️ **Découverte TP** : `gcloud monitoring services create/list` et `gcloud monitoring slos create` **n'existent pas** dans le CLI gcloud (ni en alpha). Toutes les opérations SLO passent par l'**API REST** ou la Console.
+
 ```bash
-# Créer le service Cloud Monitoring (conteneur pour les SLOs)
-gcloud monitoring services create kube-train-api \
-  --display-name="kube-train API" \
-  --project=kube-train-project
+TOKEN=$(gcloud auth print-access-token)
+
+# Créer le service (conteneur pour les SLOs)
+curl -s -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://monitoring.googleapis.com/v3/projects/kube-train-project/services" \
+  -d '{"displayName": "kube-train-api", "custom": {}}' \
+  | python3 -m json.tool
+# Réponse → noter le champ "name" → "projects/NUMERO/services/SERVICE_ID"
 ```
 
 ### Créer un SLO de disponibilité (request-based)
 
 ```bash
-# SLO disponibilité — fichier JSON
-cat > slo-availability.json << 'EOF'
-{
-  "displayName": "Disponibilité GET /trains - 99.9%",
-  "goal": 0.999,
-  "rollingPeriod": "2592000s",
-  "requestBased": {
-    "goodTotalRatio": {
-      "goodServiceFilter": "metric.type=\"prometheus.googleapis.com/http_server_requests_seconds_count/gauge\" resource.type=\"prometheus_target\" metric.labels.uri=\"/trains\" metric.labels.status=~\"2.*\"",
-      "totalServiceFilter": "metric.type=\"prometheus.googleapis.com/http_server_requests_seconds_count/gauge\" resource.type=\"prometheus_target\" metric.labels.uri=\"/trains\""
-    }
-  }
-}
-EOF
+SERVICE_ID="<id retourné ci-dessus>"
+TOKEN=$(gcloud auth print-access-token)
 
-gcloud monitoring slos create \
-  --service=kube-train-api \
-  --slo-id=availability-trains \
-  --display-name="Disponibilité GET /trains" \
-  --project=kube-train-project \
-  --slo-data=slo-availability.json
+curl -s -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://monitoring.googleapis.com/v3/projects/kube-train-project/services/${SERVICE_ID}/serviceLevelObjectives" \
+  -d '{
+    "displayName": "Availability /trains - 99.9%",
+    "serviceLevelIndicator": {
+      "requestBased": {
+        "goodTotalRatio": {
+          "goodServiceFilter": "metric.type=\"workload.googleapis.com/http_server_requests_seconds_count\" AND resource.type=\"generic_task\" AND metric.labels.uri=\"/trains\" AND metric.labels.status=\"200\"",
+          "totalServiceFilter": "metric.type=\"workload.googleapis.com/http_server_requests_seconds_count\" AND resource.type=\"generic_task\" AND metric.labels.uri=\"/trains\""
+        }
+      }
+    },
+    "goal": 0.999,
+    "rollingPeriod": "2592000s"
+  }' | python3 -m json.tool
 ```
 
 ### Créer un SLO de latence (windows-based)
 
+> ⚠️ **Découverte TP** : Spring Boot Micrometer n'exporte **pas** les buckets histogram par défaut — seuls `_count`, `_sum`, `_max` sont disponibles. Le SLO P95 réel nécessite `management.metrics.distribution.percentiles-histogram.http.server.requests=true` dans `application.properties`. En attendant, proxy via `_max` :
+
 ```bash
-cat > slo-latency.json << 'EOF'
-{
-  "displayName": "Latence P95 POST /reservations < 300ms",
-  "goal": 0.95,
-  "rollingPeriod": "2592000s",
-  "windowsBased": {
-    "windowPeriod": "60s",
-    "goodTotalRatioThreshold": {
-      "threshold": 0.3,
-      "performance": {
-        "goodTotalRatio": {
-          "goodServiceFilter": "metric.type=\"prometheus.googleapis.com/http_server_requests_seconds_bucket/gauge\" resource.type=\"prometheus_target\" metric.labels.uri=\"/reservations\" metric.labels.le=\"0.3\"",
-          "totalServiceFilter": "metric.type=\"prometheus.googleapis.com/http_server_requests_seconds_count/gauge\" resource.type=\"prometheus_target\" metric.labels.uri=\"/reservations\""
+curl -s -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://monitoring.googleapis.com/v3/projects/kube-train-project/services/${SERVICE_ID}/serviceLevelObjectives" \
+  -d '{
+    "displayName": "Latency /reservations max < 500ms - 95%",
+    "serviceLevelIndicator": {
+      "windowsBased": {
+        "windowPeriod": "60s",
+        "metricMeanInRange": {
+          "timeSeries": "metric.type=\"workload.googleapis.com/http_server_requests_seconds_max\" AND resource.type=\"generic_task\" AND metric.labels.uri=\"/reservations/{id}\"",
+          "range": {"max": 0.5}
         }
       }
-    }
-  }
-}
-EOF
-
-gcloud monitoring slos create \
-  --service=kube-train-api \
-  --slo-id=latency-reservations \
-  --project=kube-train-project \
-  --slo-data=slo-latency.json
+    },
+    "goal": 0.95,
+    "rollingPeriod": "2592000s"
+  }' | python3 -m json.tool
 ```
 
 ---
@@ -292,34 +294,34 @@ fetch <resource_type>
 | every <interval>
 ```
 
+> ⚠️ **Découverte TP** : avec l'OTel Collector (googlecloud exporter), le resource type est `generic_task` et le préfixe est `workload.googleapis.com/`. Avec GMP (PodMonitoring), ce serait `prometheus_target` et `prometheus.googleapis.com/`. Les requêtes ci-dessous reflètent l'architecture OTel réelle de kube-train.
+
 **Traffic (requêtes/s) :**
 ```
-fetch prometheus_target
-| metric 'prometheus.googleapis.com/http_server_requests_seconds_count/gauge'
-| filter metric.labels.job == 'kube-train-api'
-| rate(1m)
-| group_by [metric.labels.uri, metric.labels.method], sum
+fetch generic_task::workload.googleapis.com/http_server_requests_seconds_count
+| align rate(1m)
+| every 1m
+| group_by [], [sum(val())]
 ```
 
 **Error rate (taux d'erreurs 5xx) :**
 ```
-fetch prometheus_target
-| metric 'prometheus.googleapis.com/http_server_requests_seconds_count/gauge'
-| filter metric.labels.job == 'kube-train-api'
-| filter metric.labels.status =~ '5.*'
-| rate(1m)
-| group_by [metric.labels.uri], sum
+fetch generic_task::workload.googleapis.com/http_server_requests_seconds_count
+| filter (metric.labels.status =~ '5..')
+| align rate(1m)
+| every 1m
+| group_by [], [sum(val())]
 ```
 
-**Latence P95 :**
+**Latence max (proxy — buckets non disponibles par défaut) :**
 ```
-fetch prometheus_target
-| metric 'prometheus.googleapis.com/http_server_requests_seconds_bucket/gauge'
-| filter metric.labels.job == 'kube-train-api'
-| filter metric.labels.uri == '/reservations'
-| align delta(1m)
-| every 1m
-| group_by [metric.labels.uri], histogram_percentile(0.95)
+fetch generic_task::workload.googleapis.com/http_server_requests_seconds_max
+| group_by [], [max(val())]
+```
+
+**Error budget remaining (SLO) :**
+```
+select_slo_budget_fraction("projects/399291708401/services/SERVICE_ID/serviceLevelObjectives/SLO_ID")
 ```
 
 **Saturation CPU pod :**
@@ -346,13 +348,13 @@ fetch k8s_container
 │  Kubernetes API Server                                          │
 │          │                                                      │
 │          ▼  webhook admission (ValidatingWebhookConfiguration)  │
-│  Gatekeeper Controller (namespace: gatekeeper-system)          │
+│  Gatekeeper Controller (namespace: gatekeeper-system)           │
 │          │                                                      │
 │          ▼  évalue les Constraint actives                       │
-│  OPA (Open Policy Agent) — évalue le code Rego                 │
+│  OPA (Open Policy Agent) — évalue le code Rego                  │
 │          │                                                      │
 │          ├── ALLOW → la ressource est créée                     │
-│          └── DENY  → refus avec message d'erreur               │
+│          └── DENY  → refus avec message d'erreur                │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -501,19 +503,104 @@ gcloud alpha load-testing create-test \
 
 ## 10. Tests E2E avec données réelles
 
-> À compléter post-TP.
+### Métriques observées dans Cloud Monitoring (TP J5 — 26/06/2026)
+
+Architecture effective : Spring Boot `/actuator/prometheus` → OTel Collector (prometheus receiver) → googlecloud exporter → Cloud Monitoring.
+
+**Métriques disponibles :**
+
+| Métrique | Type | Labels disponibles |
+|---|---|---|
+| `workload.googleapis.com/http_server_requests_seconds_count` | CUMULATIVE | uri, method, status, outcome, exception, error, service_name |
+| `workload.googleapis.com/http_server_requests_seconds_sum` | CUMULATIVE | idem |
+| `workload.googleapis.com/http_server_requests_seconds_max` | GAUGE (1min) | idem |
+| `workload.googleapis.com/spring_security_*` | GAUGE/CUMULATIVE | — |
+
+**Resource type** : `generic_task` (task_id = `kube-train-service:80`, job = `kube-train-api`)
+
+**Métriques absentes** : `_bucket` (histogram) — nécessite `management.metrics.distribution.percentiles-histogram.http.server.requests=true` dans `application.properties`.
+
+### SLOs créés
+
+| SLO | ID | Type | Goal |
+|---|---|---|---|
+| Availability `/trains` | `dw9GqvhqTym5-uvCp9vSuA` | request-based | 99,9% sur 30j |
+| Latency `/reservations` max < 500ms | `6VZxFcVaQbmqHo59yqs3zw` | window-based (metricMeanInRange) | 95% sur 30j |
+
+**Service Cloud Monitoring** : `WLmPk5jSRuy_WlzRaWAv4w`
+
+### Alerte burn rate créée
+
+- Policy ID : `18308970096500853387`
+- Condition : `select_slo_burn_rate(SLO_availability, 3600s) > 14.4`
+- Channel : `1718624613965527391` (email sami.yanezcarbonell@gmail.com)
+
+### Dashboard créé
+
+- `48aa4151-13f9-4e58-ac60-b9a68b58565e` — "kube-train — Golden Signals"
+- 4 widgets : Traffic, Erreurs 5xx, Latence max, Error Budget remaining
 
 ---
 
 ## 11. Erreurs et blocages rencontrés en TP
 
-> À compléter post-TP.
+### Blocage 1 — `gcloud monitoring` commandes inexistantes
+`gcloud monitoring metrics list`, `gcloud monitoring services list`, `gcloud monitoring slos create` **n'existent pas** dans le CLI.  
+**Fix** : passer exclusivement par l'API REST (`curl -H "Authorization: Bearer $TOKEN" https://monitoring.googleapis.com/v3/...`).
+
+### Blocage 2 — Namespace GMP incorrect
+NetworkPolicy créée avec `namespaceSelector: gmp-system` mais le vrai namespace est `gke-gmp-system`.  
+**Fix** : `kubectl patch networkpolicy allow-gmp-scraping --type=json -p='[{"op":"replace","path":"/spec/ingress/0/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name","value":"gke-gmp-system"}]'`
+
+### Blocage 3 — OTel : PermissionDenied cloudtrace.traces.patch
+Le compute SA `399291708401-compute@developer.gserviceaccount.com` manquait `roles/cloudtrace.agent` malgré `roles/editor`.  
+**Fix** : `gcloud projects add-iam-policy-binding kube-train-project --member="serviceAccount:399291708401-compute@developer.gserviceaccount.com" --role="roles/cloudtrace.agent"`
+
+### Blocage 4 — OTel : PermissionDenied monitoring.metricDescriptors.create
+Même SA manquait `roles/monitoring.metricWriter`.  
+**Fix** : `gcloud projects add-iam-policy-binding ... --role="roles/monitoring.metricWriter"`
+
+### Blocage 5 — Workload Identity obligatoire sur GKE Autopilot
+Même avec `roles/editor` sur le compute SA, les métriques restaient bloquées. Sur GKE Autopilot, le Workload Identity est **obligatoire** — les pods sans annotation WI sur leur K8s SA n'obtiennent aucun credential GCP.  
+**Symptôme** : `PERMISSION_DENIED` (pas `UNAUTHENTICATED`) — le pod touche le metadata server mais sans binding WI il reçoit un credential vide ou rejeté.  
+**Fix** :
+```bash
+kubectl annotate serviceaccount default -n default \
+  iam.gke.io/gcp-service-account=399291708401-compute@developer.gserviceaccount.com --overwrite
+
+gcloud iam service-accounts add-iam-policy-binding \
+  399291708401-compute@developer.gserviceaccount.com \
+  --role=roles/iam.workloadIdentityUser \
+  --member="serviceAccount:kube-train-project.svc.id.goog[default/default]"
+```
+
+### Blocage 6 — LoadBalancer IP changée après redéploiement
+L'IP `34.78.39.236` (nginx-ingress F3) avait changé vers `34.76.253.8`.  
+**Fix** : `kubectl get svc kube-train-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}'`
+
+### Blocage 7 — `windowBased` vs `windowsBased`
+L'API SLO Cloud Monitoring utilise `windowsBased` (avec un **s**), pas `windowBased`.
 
 ---
 
 ## 12. Fichiers créés dans kube-train (récapitulatif)
 
-> À compléter post-TP.
+| Fichier | Rôle | Statut |
+|---|---|---|
+| `k8s/pod-monitoring.yaml` | PodMonitoring GMP (scraping via Google Managed Prometheus) | Créé — GMP ne scrape pas kube-train en pratique, pivotage vers OTel |
+| `k8s/network-policy-gmp.yaml` | Autorise port 8080 ingress depuis `gke-gmp-system` | Créé + patché (namespace corrigé) |
+| `k8s/network-policy-otel-scraping.yaml` | Autorise port 8080 ingress depuis le pod `otel-collector` | Créé |
+| `k8s/otel-collector.yaml` | Modifié : ajout prometheus receiver + pipeline metrics | Modifié |
+| `k8s/gatekeeper-ct-allowed-repos.yaml` | ConstraintTemplate : images depuis registres autorisés seulement | Créé |
+| `k8s/gatekeeper-ct-required-limits.yaml` | ConstraintTemplate : resource limits obligatoires sur containers | Créé |
+
+**Ressources GCP créées (non versionées) :**
+- Service Cloud Monitoring `kube-train-api` → `WLmPk5jSRuy_WlzRaWAv4w`
+- SLO availability + SLO latency
+- Alert policy burn rate 14,4×
+- Notification channel email
+- Dashboard "Golden Signals"
+- Gatekeeper Constraints `allowed-repos-kube-train` + `required-limits-kube-train` (en `warn`)
 
 ---
 

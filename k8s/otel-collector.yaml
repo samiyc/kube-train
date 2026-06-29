@@ -33,6 +33,14 @@ data:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: 'kube-train-api'
+              scrape_interval: 30s
+              static_configs:
+                - targets: ['kube-train-service:80']
+              metrics_path: '/actuator/prometheus'
 
     processors:
       memory_limiter:
@@ -54,6 +62,10 @@ data:
           receivers: [otlp]
           processors: [memory_limiter, batch]
           exporters: [googlecloud, debug]
+        metrics:
+          receivers: [prometheus]
+          processors: [memory_limiter, batch]
+          exporters: [googlecloud]
 ---
 apiVersion: apps/v1
 kind: Deployment
