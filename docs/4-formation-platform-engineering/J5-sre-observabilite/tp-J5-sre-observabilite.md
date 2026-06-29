@@ -569,3 +569,179 @@ kubectl apply -f bad-pod.yaml
 - Gatekeeper installé avec deux contraintes utiles et actionnables.
 
 > Bonus senior : ajoutez ensuite un slow-burn `3x`, automatisez l'export des dashboards en JSON versionné, et faites bloquer vos PR Helm/Terraform tant que les policies Gatekeeper ne passent pas en pré-production.
+
+---
+
+## Validation E2E — Tester le Golden Signal en conditions réelles
+
+### Objectif
+Fermer la boucle : générer du trafic réel + des erreurs, observer la propagation dans Cloud Monitoring, et vérifier que le SLO de disponibilité réagit correctement.
+
+### URLs de validation GCP
+
+| Ressource | URL console |
+|---|---|
+| Services & SLOs | `https://console.cloud.google.com/monitoring/services?project=kube-train-project` |
+| Dashboard Golden Signals | `https://console.cloud.google.com/monitoring/dashboards?project=kube-train-project` |
+| Alerte burn rate | `https://console.cloud.google.com/monitoring/alerting?project=kube-train-project` |
+| Metrics Explorer (métrique brute) | `https://console.cloud.google.com/monitoring/metrics-explorer?project=kube-train-project` |
+| Cloud Logging (traces Istio) | `https://console.cloud.google.com/logs/query?project=kube-train-project` |
+
+---
+
+### Test 1 — Trafic normal → widget Traffic
+
+```bash
+LB_IP=$(kubectl get svc kube-train-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+# 50 requêtes normales sur /trains et /reservations
+for i in $(seq 1 50); do curl -s -o /dev/null http://${LB_IP}/trains; done
+for i in $(seq 1 10); do
+  curl -s -o /dev/null -X POST http://${LB_IP}/reservations \
+    -H "Content-Type: application/json" \
+    -d "{\"passengerId\":\"Test-${i}\",\"trainId\":\"TGV-7042\"}"
+done
+```
+
+Attendre ~2-3 minutes, puis vérifier dans Cloud Monitoring → Dashboard → widget **Traffic (req/min)** : la courbe doit monter.
+
+---
+
+### Test 2 — Erreurs applicatives 4xx → visibles dans les métriques Spring Boot
+
+Les erreurs 4xx (ex. endpoint inexistant, paramètre invalide) sont comptées par Spring Boot Micrometer et apparaissent dans `workload.googleapis.com/http_server_requests_seconds_count` avec `status="404"`.
+
+```bash
+# Appels sur des IDs inexistants → 404 enregistrés par Spring Boot
+for i in $(seq 1 20); do
+  curl -s -o /dev/null -w "%{http_code}\n" http://${LB_IP}/trains/FAKE-ID-${i}
+  curl -s -o /dev/null -w "%{http_code}\n" http://${LB_IP}/reservations/NONEXISTENT-${i}
+done
+
+# Vérifier dans Metrics Explorer que les séries status="404" apparaissent
+TOKEN=$(gcloud auth print-access-token)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://monitoring.googleapis.com/v3/projects/kube-train-project/timeSeries?filter=metric.type%3D%22workload.googleapis.com%2Fhttp_server_requests_seconds_count%22%20AND%20metric.labels.status%3D%22404%22&interval.startTime=$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%SZ)&interval.endTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'{len(d.get(\"timeSeries\",[]))} séries status=404 trouvées')"
+```
+
+> **Point clé** : le widget "Taux d'erreurs 5xx" du dashboard filtre sur `status =~ '5..'`. Les 404 apparaissent dans Metrics Explorer mais pas dans ce widget — c'est normal. Pour voir TOUTES les erreurs non-2xx, changer le filtre en `metric.labels.status != "200"`.
+
+---
+
+### Test 3 — Fautes Istio 503 → visibles dans Cloud Logging, PAS dans les métriques Spring Boot
+
+C'est le test le plus instructif : Istio peut intercepter et rejeter des requêtes **avant qu'elles n'atteignent Spring Boot**. Ces erreurs n'apparaissent pas dans `http_server_requests_seconds_count` car Micrometer n'est jamais appelé.
+
+```bash
+# Injecter 30% de fautes HTTP 503 via VirtualService Istio
+kubectl apply -f - << 'EOF'
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: kube-train-fault-test
+  namespace: default
+spec:
+  hosts:
+    - kube-train-service
+  http:
+    - fault:
+        abort:
+          httpStatus: 503
+          percentage:
+            value: 30
+      route:
+        - destination:
+            host: kube-train-service
+EOF
+
+# Attendre la propagation CSM (~30s), puis générer du trafic
+sleep 35
+for i in $(seq 1 40); do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${LB_IP}/trains)
+  echo "Request $i: $STATUS"
+done
+```
+
+**Où observer ces erreurs :**
+
+```bash
+# Cloud Logging — erreurs Istio/Envoy (httpStatus 503 injecté)
+gcloud logging read \
+  'resource.type="k8s_container" AND jsonPayload.response_code=503' \
+  --project=kube-train-project \
+  --limit=10 \
+  --format='table(timestamp,jsonPayload.response_code,jsonPayload.path)'
+
+# Metrics Explorer — vérifier l'ABSENCE dans Spring Boot metrics
+TOKEN=$(gcloud auth print-access-token)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://monitoring.googleapis.com/v3/projects/kube-train-project/timeSeries?filter=metric.type%3D%22workload.googleapis.com%2Fhttp_server_requests_seconds_count%22%20AND%20metric.labels.status%3D%22503%22&interval.startTime=$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%SZ)&interval.endTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'{len(d.get(\"timeSeries\",[]))} séries status=503 dans Spring Boot metrics (attendu: 0)')"
+```
+
+**Supprimer la fault injection** (obligatoire avant de quitter) :
+
+```bash
+kubectl delete virtualservice kube-train-fault-test
+```
+
+> **Enseignement clé — observabilité en deux couches** :
+>
+> | Couche | Outil | Ce qu'elle voit |
+> |---|---|---|
+> | **Service Mesh (Envoy/Istio)** | Cloud Logging, métriques Istio | Toutes les requêtes + fautes injectées, même celles bloquées avant l'app |
+> | **Application (Spring Boot)** | `workload.googleapis.com/` via OTel | Uniquement les requêtes qui atteignent le code Java |
+>
+> Un SLO basé sur les métriques Spring Boot (`http_server_requests_seconds_count`) ne voit PAS les fautes Istio. Pour un SLO couvrant la couche réseau, il faudrait utiliser les métriques Istio (`istio_requests_total`).
+
+---
+
+### Test 4 — Observer la compliance SLO après le trafic
+
+```bash
+TOKEN=$(gcloud auth print-access-token)
+SERVICE_ID="WLmPk5jSRuy_WlzRaWAv4w"
+SLO1_ID="dw9GqvhqTym5-uvCp9vSuA"
+
+# Lire la compliance actuelle du SLO availability
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://monitoring.googleapis.com/v3/projects/kube-train-project/services/${SERVICE_ID}/serviceLevelObjectives/${SLO1_ID}" \
+  | python3 -m json.tool | grep -E "goal|displayName"
+```
+
+Dans la console → **Services & SLOs → kube-train-api** : les deux SLOs doivent afficher un pourcentage de compliance, et l'error budget restant doit être visible.
+
+---
+
+### Test 5 — Vérifier Gatekeeper
+
+```bash
+# État des contraintes
+kubectl get constraints
+
+# Violations actuelles (après audit ~60s)
+kubectl describe k8sallowedrepos allowed-repos-kube-train | grep -A 10 "Violations"
+kubectl describe k8srequiredlimits required-limits-kube-train | grep -A 10 "Violations"
+
+# Tester le rejet d'un pod avec image non autorisée (mode warn → warning, pas blocage)
+kubectl run test-bad-image --image=nginx:latest --restart=Never -n default
+# En mode warn : le pod EST créé mais avec un avertissement Gatekeeper dans les events
+kubectl get events | grep -i "gatekeeper\|constraint\|warn" | tail -5
+kubectl delete pod test-bad-image --ignore-not-found
+```
+
+---
+
+### Checklist de validation finale
+
+```
+✅ Widget Traffic (req/min) — courbe visible après génération de trafic
+✅ Métriques status=404 dans Metrics Explorer après les appels FAKE-ID
+✅ 0 série status=503 dans Spring Boot metrics après fault injection Istio
+✅ Erreurs 503 visibles dans Cloud Logging pendant la fault injection
+✅ 2 SLOs affichent compliance % dans console Services & SLOs
+✅ Alerte burn rate active (policy visible dans Alerting)
+✅ Gatekeeper : contraintes actives, audit audit ok
+✅ Fault injection supprimée (kubectl delete virtualservice kube-train-fault-test)
+```
