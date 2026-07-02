@@ -542,6 +542,73 @@ Architecture effective : Spring Boot `/actuator/prometheus` → OTel Collector (
 
 ---
 
+### Validation E2E — Résultats réels (02/07/2026)
+
+| Test | Objectif | Commande clé | Résultat observé | Statut |
+|---|---|---|---|---|
+| **Test 1** | Trafic normal → golden signals | `for i in $(seq 1 50); do curl -s .../trains; done` | Traffic + Latence max visibles dans le dashboard | ✅ |
+| **Test 2** | Erreurs 404 → métriques errors | `curl .../trains/999` (id inexistant) | `status=404` visible en Metrics Explorer | ✅ |
+| **Test 3** | Fault injection Istio 30% 503 | `kubectl exec $POD -c api-container -- curl http://kube-train-service/trains` | **13/40 = 32,5%** de 503 — proche des 30% configurés | ✅ |
+| **Test 4** | SLOs lisibles via API REST | `curl .../services/WLmPk5jSRuy_WlzRaWAv4w/serviceLevelObjectives` | 2 SLOs retournés : availability + latency | ✅ |
+| **Test 5** | Gatekeeper bloque image non autorisée | `kubectl run fault-test --image=curlimages/curl:8.8.0` | Warning `[allowed-repos-kube-train] image non autorisée` | ✅ |
+
+#### Test 3 — Détail fault injection (leçon clé)
+
+**Pourquoi 100% de 200 depuis WSL ?**
+
+Le VirtualService Istio s'applique au trafic **intra-mesh** (pod → service via Envoy). Le curl depuis WSL passe par le LoadBalancer externe (`34.76.253.8`) → il entre dans le cluster au niveau infrastructure et atteint le pod sans traverser les règles Envoy/VirtualService.
+
+```
+Trafic EXTERNE (WSL curl LB IP) :
+WSL → LoadBalancer 34.76.253.8 → pod:8080 direct
+                                    ↑ VirtualService ignoré → 100% 200
+
+Trafic INTRA-MESH (kubectl exec) :
+api-container → Envoy sidecar → VirtualService (30% abort) → kube-train-service
+                                    ↑ VirtualService actif → 32,5% 503
+```
+
+**Commande correcte pour tester la fault injection :**
+
+```bash
+POD=$(kubectl get pod -l app=kube-train-pod -o jsonpath='{.items[0].metadata.name}')
+kubectl exec $POD -c api-container -- \
+  sh -c 'for i in $(seq 1 40); do curl -s -o /dev/null -w "Request $i: %{http_code}\n" http://kube-train-service/trains; done'
+```
+
+> ⚠️ Le container Spring Boot dans ce pod s'appelle `api-container` (pas `kube-train-api`). Vérifier avec `kubectl get pod $POD -o jsonpath='{.spec.containers[*].name}'`.
+
+#### Test 5 — Détail Gatekeeper (découverte bonus)
+
+En cherchant un pod test pour la fault injection, on a tenté `curlimages/curl:8.8.0` → bloqué par `AllowedRegistries`. Registres autorisés configurés :
+
+```
+europe-west1-docker.pkg.dev/kube-train-project/
+otel/opentelemetry-collector-contrib
+gcr.io/
+europe-west1-artifactregistry.gcr.io/
+```
+
+Alternative valide (Gatekeeper autorisé) : `gcr.io/google.com/cloudsdktool/cloud-sdk:slim` ou `kubectl exec` sur un pod existant.
+
+#### Requête API REST pour lister les SLOs (Test 4)
+
+```bash
+TOKEN=$(gcloud auth print-access-token)
+
+# Lister tous les services monitored du projet
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://monitoring.googleapis.com/v3/projects/kube-train-project/services" \
+  | python3 -m json.tool | grep '"name"'
+
+# Lister les SLOs du service kube-train-api
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://monitoring.googleapis.com/v3/projects/kube-train-project/services/WLmPk5jSRuy_WlzRaWAv4w/serviceLevelObjectives" \
+  | python3 -m json.tool
+```
+
+---
+
 ## 11. Erreurs et blocages rencontrés en TP
 
 ### Blocage 1 — `gcloud monitoring` commandes inexistantes
@@ -580,6 +647,16 @@ L'IP `34.78.39.236` (nginx-ingress F3) avait changé vers `34.76.253.8`.
 
 ### Blocage 7 — `windowBased` vs `windowsBased`
 L'API SLO Cloud Monitoring utilise `windowsBased` (avec un **s**), pas `windowBased`.
+
+### Blocage 8 — Istio fault injection : trafic externe vs intra-mesh
+Fault injection configurée avec 30% d'abort HTTP 503 → tous les curls depuis WSL retournaient 200.  
+**Cause** : le VirtualService s'applique au trafic intra-mesh uniquement (pod → Envoy sidecar → ClusterIP). Le trafic externe qui entre via le LoadBalancer bypasse entièrement les règles Envoy.  
+**Fix** : lancer le trafic depuis l'intérieur du cluster avec `kubectl exec` sur un pod existant (`-c api-container`), ou spawner un pod depuis une image autorisée par Gatekeeper (`gcr.io/`).
+
+### Blocage 9 — Nom du container `api-container` (pas `kube-train-api`)
+`kubectl exec $POD -c kube-train-api` → `error: container kube-train-api is not valid`.  
+Le container Spring Boot se nomme `api-container` dans le Deployment (containers : `api-container`, `cloud-sql-proxy`, `istio-proxy`).  
+**Fix** : `kubectl get pod $POD -o jsonpath='{.spec.containers[*].name}'` pour vérifier les noms avant un `exec -c`.
 
 ---
 
