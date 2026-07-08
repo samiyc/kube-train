@@ -203,7 +203,7 @@ Par défaut, K8s monte un JWT token dans chaque pod (`/var/run/secrets/kubernete
 #### GKE : SA + Workload Identity
 
 ```yaml
-# k8s/rbac-gke.yaml
+# k8s/security/rbac-gke.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -244,7 +244,7 @@ Le **RBAC** (Role-Based Access Control) décrit **qui** peut faire **quoi** sur 
 
 **`list` sur les secrets** retourne les **valeurs** de tous les secrets du namespace, pas seulement leurs noms. C'est une exfiltration de données complète en une seule requête.
 
-#### Exemple kube-train (k8s/rbac.yaml)
+#### Exemple kube-train (k8s/security/rbac.yaml)
 
 ```yaml
 kind: Role
@@ -525,10 +525,10 @@ Pour auditer la sécurité d'un cluster kube-train, ordre de lecture recommandé
 
 | Fichier | Ce qu'il contrôle | Points à vérifier |
 |---|---|---|
-| `k8s/namespace-pss.yaml` | Première ligne de défense (admission) | enforce ≥ baseline ? audit/warn = restricted ? |
-| `k8s/rbac.yaml` / `k8s/rbac-gke.yaml` | Identités et droits | SA dédiés ? `resourceNames` présent ? `automountServiceAccountToken: false` ? |
-| `k8s/deployment.yaml` / `k8s/deployment-gke.yaml` | Hardening runtime | securityContext complet ? SA dédié référencé ? resources définis ? |
-| `k8s/quota.yaml` | Gouvernance des ressources | `pods` quota compatible avec rolling update ? `requests.cpu` laisse de la marge HPA ? |
+| `k8s/security/namespace-pss.yaml` | Première ligne de défense (admission) | enforce ≥ baseline ? audit/warn = restricted ? |
+| `k8s/security/rbac.yaml` / `k8s/security/rbac-gke.yaml` | Identités et droits | SA dédiés ? `resourceNames` présent ? `automountServiceAccountToken: false` ? |
+| `k8s/workloads/deployment.yaml` / `k8s/workloads/deployment-gke.yaml` | Hardening runtime | securityContext complet ? SA dédié référencé ? resources définis ? |
+| `k8s/security/quota.yaml` | Gouvernance des ressources | `pods` quota compatible avec rolling update ? `requests.cpu` laisse de la marge HPA ? |
 
 **Checklist sécurité Deployment** :
 ```yaml

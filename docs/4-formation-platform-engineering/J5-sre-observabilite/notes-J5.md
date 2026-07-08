@@ -666,12 +666,12 @@ Le container Spring Boot se nomme `api-container` dans le Deployment (containers
 
 | Fichier | Rôle | Statut |
 |---|---|---|
-| `k8s/pod-monitoring.yaml` | PodMonitoring GMP (scraping via Google Managed Prometheus) | Créé — GMP ne scrape pas kube-train en pratique, pivotage vers OTel |
-| `k8s/network-policy-gmp.yaml` | Autorise port 8080 ingress depuis `gke-gmp-system` | Créé + patché (namespace corrigé) |
-| `k8s/network-policy-otel-scraping.yaml` | Autorise port 8080 ingress depuis le pod `otel-collector` | Créé |
-| `k8s/otel-collector.yaml` | Modifié : ajout prometheus receiver + pipeline metrics | Modifié |
-| `k8s/gatekeeper-ct-allowed-repos.yaml` | ConstraintTemplate : images depuis registres autorisés seulement | Créé |
-| `k8s/gatekeeper-ct-required-limits.yaml` | ConstraintTemplate : resource limits obligatoires sur containers | Créé |
+| `k8s/observability/pod-monitoring.yaml` | PodMonitoring GMP (scraping via Google Managed Prometheus) | Créé — GMP ne scrape pas kube-train en pratique, pivotage vers OTel |
+| `k8s/network/network-policy-gmp.yaml` | Autorise port 8080 ingress depuis `gke-gmp-system` | Créé + patché (namespace corrigé) |
+| `k8s/network/network-policy-otel-scraping.yaml` | Autorise port 8080 ingress depuis le pod `otel-collector` | Créé |
+| `k8s/observability/otel-collector.yaml` | Modifié : ajout prometheus receiver + pipeline metrics | Modifié |
+| `k8s/security/gatekeeper-ct-allowed-repos.yaml` | ConstraintTemplate : images depuis registres autorisés seulement | Créé |
+| `k8s/security/gatekeeper-ct-required-limits.yaml` | ConstraintTemplate : resource limits obligatoires sur containers | Créé |
 
 **Ressources GCP créées (non versionées) :**
 - Service Cloud Monitoring `kube-train-api` → `WLmPk5jSRuy_WlzRaWAv4w`

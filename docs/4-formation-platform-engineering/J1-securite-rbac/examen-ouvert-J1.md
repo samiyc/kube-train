@@ -11,7 +11,7 @@
 
 ### Question 1 — PSS : niveaux et modes ⭐
 
-En lisant `k8s/namespace-pss.yaml` :
+En lisant `k8s/security/namespace-pss.yaml` :
 
 a) Le namespace `default` utilise trois paires `mode/niveau`. Citer chaque paire et expliquer en une phrase ce que chaque **mode** fait concrètement (ce que K8s fait quand une violation est détectée).
 
@@ -27,13 +27,13 @@ a) Nommer les deux ServiceAccounts dédiés utilisés dans kube-train et indique
 
 b) Expliquer concrètement le risque si l'API Spring Boot et le service notification partageaient le SA `default` — illustrer avec un scénario où ce partage pose un problème de sécurité réel.
 
-c) Dans `k8s/deployment.yaml`, la ligne `automountServiceAccountToken: false` est présente. À quoi sert le token de SA que K8s monte par défaut, et pourquoi le désactiver ici est une bonne pratique ?
+c) Dans `k8s/workloads/deployment.yaml`, la ligne `automountServiceAccountToken: false` est présente. À quoi sert le token de SA que K8s monte par défaut, et pourquoi le désactiver ici est une bonne pratique ?
 
 ---
 
 ### Question 3 — LimitRange vs ResourceQuota ⭐
 
-En lisant `k8s/quota.yaml`, deux objets sont définis côte à côte.
+En lisant `k8s/security/quota.yaml`, deux objets sont définis côte à côte.
 
 a) Pour chaque objet : citer son `kind`, préciser le niveau auquel il s'applique (Container / Pod / Namespace), et résumer son rôle en une phrase.
 
@@ -47,7 +47,7 @@ c) Pourquoi ces deux objets sont-ils **complémentaires** plutôt que redondants
 
 ### Question 4 — securityContext : classification complète ⭐⭐
 
-En lisant `k8s/deployment.yaml` :
+En lisant `k8s/workloads/deployment.yaml` :
 
 a) Lister **tous** les champs `securityContext` présents (pod-level ET container-level). Pour chacun, préciser son niveau.
 
@@ -59,7 +59,7 @@ c) `seccompProfile` peut être défini aux deux niveaux (pod et container). Dans
 
 ### Question 5 — RBAC : verbes et resourceNames ⭐⭐
 
-En lisant `k8s/rbac.yaml` :
+En lisant `k8s/security/rbac.yaml` :
 
 a) Expliquer la différence concrète entre `get` et `list` sur la ressource `secrets`. Pourquoi `list` serait-il dangereux sur ce namespace ?
 
@@ -81,7 +81,7 @@ kubectl auth can-i list secrets \
 
 ### Question 6 — Init container : états du pod ⭐⭐
 
-En lisant `k8s/deployment.yaml`, l'init container `wait-for-postgres` attend que `postgres-service:5432` réponde.
+En lisant `k8s/workloads/deployment.yaml`, l'init container `wait-for-postgres` attend que `postgres-service:5432` réponde.
 
 Décrire précisément la valeur de `STATUS` visible dans `kubectl get pods` pour chacun des scénarios suivants :
 
@@ -97,7 +97,7 @@ d) L'init container se termine avec exit code 0, mais Spring Boot crashe au dém
 
 ### Question 7 — readOnlyRootFilesystem et volumes ⭐⭐
 
-En lisant `k8s/deployment.yaml` :
+En lisant `k8s/workloads/deployment.yaml` :
 
 a) `readOnlyRootFilesystem: true` est activé. Décrire concrètement ce qu'un processus dans le container **ne peut plus faire** (donner 2 exemples d'opérations bloquées).
 
@@ -128,7 +128,7 @@ c) La ResourceQuota actuelle contient aussi `requests.cpu: "2"`. Si chaque pod a
 
 ### Question 9 — Deadlock sidecar / init container ⭐⭐⭐
 
-Le commentaire dans `k8s/deployment.yaml` indique :
+Le commentaire dans `k8s/workloads/deployment.yaml` indique :
 > `⚠️ Pattern Minikube uniquement — Sur GKE, ne pas attendre 127.0.0.1:5432 (cloud-sql-proxy est un sidecar → deadlock)`
 
 a) Expliquer **précisément** le mécanisme du deadlock qui se produirait si l'init container faisait `until nc -z 127.0.0.1 5432` ET que Cloud SQL Auth Proxy était déclaré dans `spec.containers[]` du même pod. Décrire l'ordre de démarrage que K8s applique.
@@ -141,7 +141,7 @@ c) Kubernetes 1.28 a introduit une fonctionnalité pour résoudre ce problème n
 
 ### Question 10 — Audit de sécurité RBAC ⭐⭐⭐
 
-Un développeur propose de remplacer le contenu de `k8s/rbac.yaml` par :
+Un développeur propose de remplacer le contenu de `k8s/security/rbac.yaml` par :
 ```yaml
 rules:
 - apiGroups: [""]

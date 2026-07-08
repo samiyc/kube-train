@@ -17,13 +17,13 @@ kubectl get secret kube-train-secrets 2>/dev/null || \
 kubectl get secret kube-train-secrets -o jsonpath='{.data.API_KEY}' | base64 -d
 
 # ── Minikube — apply dans l'ordre ─────────────────────────────────────────────
-kubectl apply -f k8s/postgres-storage.yaml
-kubectl apply -f k8s/postgres-deployment.yaml
-kubectl apply -f k8s/postgres-service.yaml
-kubectl apply -f k8s/rbac.yaml              # RBAC avant Deployment (SA reference)
-kubectl apply -f k8s/namespace-pss.yaml
-kubectl apply -f k8s/quota.yaml
-kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/database/postgres-storage.yaml
+kubectl apply -f k8s/database/postgres-deployment.yaml
+kubectl apply -f k8s/database/postgres-service.yaml
+kubectl apply -f k8s/security/rbac.yaml              # RBAC avant Deployment (SA reference)
+kubectl apply -f k8s/security/namespace-pss.yaml
+kubectl apply -f k8s/security/quota.yaml
+kubectl apply -f k8s/workloads/deployment.yaml
 kubectl rollout status deployment/kube-train-deployment
 
 # ── Vérifications F4-J1 ───────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ kubectl auth can-i get secret/kube-train-secrets \
 kubectl describe deployment kube-train-deployment | tail -20
 kubectl get events --sort-by=.lastTimestamp | tail -10
 # Causes fréquentes : quota pods dépassé, image corrompue, init container en boucle
-# Fix quota : kubectl apply -f k8s/quota.yaml (après avoir ajusté pods: N)
+# Fix quota : kubectl apply -f k8s/security/quota.yaml (après avoir ajusté pods: N)
 # Fix image : docker build --no-cache -t kube-train-api:vN ./kube-train-api/
 #             puis kubectl rollout restart deployment/kube-train-deployment
 ```

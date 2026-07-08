@@ -49,10 +49,10 @@ kubectl get namespace default --show-labels | grep istio
 # → 15020 : port de santé pilot-agent — évite les probes échouent avant xDS prêt
 
 # ── Étape 2 : mTLS STRICT ─────────────────────────────────────────────────────
-kubectl apply -f k8s/notification-service.yaml          # Service ClusterIP requis
-kubectl apply -f k8s/network-policy-notification.yaml   # Allow L4 (port 8081)
-kubectl apply -f k8s/peer-authentication-strict.yaml    # STRICT sur notification-pod
-kubectl apply -f k8s/istio-test-pods.yaml               # mesh-client + plain-client
+kubectl apply -f k8s/workloads/notification-service.yaml          # Service ClusterIP requis
+kubectl apply -f k8s/network/network-policy-notification.yaml   # Allow L4 (port 8081)
+kubectl apply -f k8s/istio/peer-authentication-strict.yaml    # STRICT sur notification-pod
+kubectl apply -f k8s/istio/istio-test-pods.yaml               # mesh-client + plain-client
 
 # Attendre la propagation Traffic Director (~60s)
 sleep 60
@@ -73,11 +73,11 @@ kubectl exec -n default plain-client -c curl -- \
 
 # ── Étape 3 : Canary 90/10 ───────────────────────────────────────────────────
 # 1. Appliquer le label version: v1 sur le déploiement existant
-kubectl apply -f k8s/deployment-gke.yaml
+kubectl apply -f k8s/workloads/deployment-gke.yaml
 kubectl rollout status deployment/kube-train-deployment
 
 # 2. Vérifier que le git pull a mis à jour le tag dans deployment-gke-v2.yaml
-git pull && kubectl apply -f k8s/deployment-gke-v2.yaml
+git pull && kubectl apply -f k8s/workloads/deployment-gke-v2.yaml
 kubectl rollout status deployment/kube-train-deployment-v2
 # Si ImagePullBackOff (CI/CD pas encore fini) :
 IMAGE=$(kubectl get deployment kube-train-deployment \
@@ -85,7 +85,7 @@ IMAGE=$(kubectl get deployment kube-train-deployment \
 kubectl set image deployment/kube-train-deployment-v2 api-container=$IMAGE
 
 # 3. Appliquer DestinationRule + VirtualService
-kubectl apply -f k8s/istio-canary.yaml
+kubectl apply -f k8s/istio/istio-canary.yaml
 
 # 4. Vérifier les labels v1/v2 sur les pods
 kubectl get pods -l app=kube-train-pod --show-labels | grep "version="
@@ -104,7 +104,7 @@ kubectl exec -n default mesh-client -c istio-proxy -- \
 kubectl logs -l version=v2 -c api-container | grep "GET /"
 
 # ── Étape 4a : AuthorizationPolicy ───────────────────────────────────────────
-kubectl apply -f k8s/authorization-policy.yaml
+kubectl apply -f k8s/istio/authorization-policy.yaml
 sleep 60  # attendre propagation Traffic Director
 
 # Test autorisé (kube-train-api-sa)
@@ -122,7 +122,7 @@ kubectl exec -n default other-client -- \
 # → RBAC: access denied
 
 # ── Étape 4b : Fault injection 500ms sur /reservations ───────────────────────
-kubectl apply -f k8s/istio-fault-injection.yaml
+kubectl apply -f k8s/istio/istio-fault-injection.yaml
 
 # Mesure de latence injectée
 time kubectl exec -n default mesh-client -c curl -- \
@@ -130,7 +130,7 @@ time kubectl exec -n default mesh-client -c curl -- \
 # → real ~0m0.980s (500ms de délai Istio + overhead)
 
 # Désactiver la fault injection (remettre le canary 90/10 sans latence)
-kubectl apply -f k8s/istio-canary.yaml
+kubectl apply -f k8s/istio/istio-canary.yaml
 
 # ── Debug — Stats Envoy complètes ─────────────────────────────────────────────
 # Clusters : liste tous les upstreams connus d'un pod
@@ -150,11 +150,11 @@ kubectl exec -n default mesh-client -c istio-proxy -- \
 # ── Cleanup fin de journée ────────────────────────────────────────────────────
 # Supprimer les pods et déploiement de test
 kubectl delete pod mesh-client plain-client other-client --ignore-not-found
-kubectl delete -f k8s/deployment-gke-v2.yaml --ignore-not-found
-kubectl delete -f k8s/istio-canary.yaml --ignore-not-found        # DR + VS
-kubectl delete -f k8s/istio-fault-injection.yaml --ignore-not-found
-kubectl delete -f k8s/authorization-policy.yaml --ignore-not-found
-kubectl delete -f k8s/peer-authentication-strict.yaml --ignore-not-found
+kubectl delete -f k8s/workloads/deployment-gke-v2.yaml --ignore-not-found
+kubectl delete -f k8s/istio/istio-canary.yaml --ignore-not-found        # DR + VS
+kubectl delete -f k8s/istio/istio-fault-injection.yaml --ignore-not-found
+kubectl delete -f k8s/istio/authorization-policy.yaml --ignore-not-found
+kubectl delete -f k8s/istio/peer-authentication-strict.yaml --ignore-not-found
 # Garder : notification-service.yaml, network-policy-notification.yaml (utiles en prod)
 
 # Stopper Cloud SQL + terraform destroy (si fin de formation)

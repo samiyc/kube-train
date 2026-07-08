@@ -214,7 +214,7 @@ jobs:
       - name: Configurer Workload Identity (annoter kube-train-api-sa)
         if: steps.cluster_check.outputs.exists == 'true'
         run: |
-          kubectl apply -f k8s/rbac-gke.yaml
+          kubectl apply -f k8s/security/rbac-gke.yaml
           kubectl annotate serviceaccount kube-train-api-sa \
             iam.gke.io/gcp-service-account=kube-train-api-sa@kube-train-project.iam.gserviceaccount.com \
             --namespace=default \
@@ -257,25 +257,25 @@ jobs:
         run: |
           # Remplace le tag d'image actuel (SHA précédent ou placeholder) par le nouveau
           sed "s|image: .*kube-train-api.*|image: ${{ env.IMAGE }}:${{ github.sha }}|g" \
-            k8s/deployment-gke.yaml | kubectl apply -f -
-          kubectl apply -f k8s/configmap.yaml
-          kubectl apply -f k8s/service.yaml
-          kubectl apply -f k8s/hpa.yaml
+            k8s/workloads/deployment-gke.yaml | kubectl apply -f -
+          kubectl apply -f k8s/workloads/configmap.yaml
+          kubectl apply -f k8s/workloads/service.yaml
+          kubectl apply -f k8s/workloads/hpa.yaml
 
           # Déployer le notification-service
           sed "s|image: .*train-notification-service.*|image: ${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}|g" \
-            k8s/notification-deployment-gke.yaml | kubectl apply -f -
+            k8s/workloads/notification-deployment-gke.yaml | kubectl apply -f -
 
           # Déployer l'OTel Collector (reçoit OTLP des pods → exporte vers Cloud Trace)
-          kubectl apply -f k8s/otel-collector.yaml
+          kubectl apply -f k8s/observability/otel-collector.yaml
 
           # Network Policies (zero-trust : deny all + allow explicite)
-          kubectl apply -f k8s/network-policy-default-deny.yaml
-          kubectl apply -f k8s/network-policy-api.yaml
-          kubectl apply -f k8s/network-policy-otel.yaml
+          kubectl apply -f k8s/network/network-policy-default-deny.yaml
+          kubectl apply -f k8s/network/network-policy-api.yaml
+          kubectl apply -f k8s/network/network-policy-otel.yaml
 
           # Ingress HTTPS (host hardcodé dans le fichier, plus de sed placeholder)
-          kubectl apply -f k8s/ingress-gke.yaml
+          kubectl apply -f k8s/network/ingress-gke.yaml
 
       - name: Vérifier le déploiement kube-train-api
         if: steps.cluster_check.outputs.exists == 'true'
@@ -295,7 +295,7 @@ jobs:
             echo "⚠️ nginx-ingress non installé — Ingress ignoré. Réinstaller manuellement si besoin."
             exit 0
           fi
-          kubectl apply -f k8s/ingress-gke.yaml
+          kubectl apply -f k8s/network/ingress-gke.yaml
 
   # ─────────────────────────────────────────────────────────────────────────────
   # GitOps — Commit les image tags dans les manifests
@@ -319,21 +319,21 @@ jobs:
         run: |
           # deployment-gke.yaml : remplace le placeholder OU l'ancien tag
           sed -i "s|image: IMAGE_TAG_PLACEHOLDER|image: ${{ env.IMAGE }}:${{ github.sha }}|g" \
-            k8s/deployment-gke.yaml
+            k8s/workloads/deployment-gke.yaml
           sed -i "s|image: ${{ env.IMAGE }}:.*|image: ${{ env.IMAGE }}:${{ github.sha }}|g" \
-            k8s/deployment-gke.yaml
+            k8s/workloads/deployment-gke.yaml
 
           # notification-deployment-gke.yaml : idem
           sed -i "s|image: NOTIFICATION_IMAGE_PLACEHOLDER|image: ${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}|g" \
-            k8s/notification-deployment-gke.yaml
+            k8s/workloads/notification-deployment-gke.yaml
           sed -i "s|image: ${{ env.IMAGE_NOTIFICATION }}:.*|image: ${{ env.IMAGE_NOTIFICATION }}:${{ github.sha }}|g" \
-            k8s/notification-deployment-gke.yaml
+            k8s/workloads/notification-deployment-gke.yaml
 
           # deployment-gke-v2.yaml : canary v2 — même image que v1
           sed -i "s|image: IMAGE_TAG_PLACEHOLDER|image: ${{ env.IMAGE }}:${{ github.sha }}|g" \
-            k8s/deployment-gke-v2.yaml
+            k8s/workloads/deployment-gke-v2.yaml
           sed -i "s|image: ${{ env.IMAGE }}:.*|image: ${{ env.IMAGE }}:${{ github.sha }}|g" \
-            k8s/deployment-gke-v2.yaml
+            k8s/workloads/deployment-gke-v2.yaml
 
           echo "✅ Tags mis à jour → ${{ github.sha }}"
 
@@ -341,7 +341,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/deployment-gke.yaml k8s/notification-deployment-gke.yaml k8s/deployment-gke-v2.yaml
+          git add k8s/workloads/deployment-gke.yaml k8s/workloads/notification-deployment-gke.yaml k8s/workloads/deployment-gke-v2.yaml
           # Ne commit que s'il y a un diff (première fois ou tag différent)
           if git diff --cached --quiet; then
             echo "ℹ️ Aucun changement de tag — skip commit"

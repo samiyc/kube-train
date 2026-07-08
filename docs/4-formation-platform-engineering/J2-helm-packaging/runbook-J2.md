@@ -49,12 +49,12 @@ kubectl get secret kube-train-secrets 2>/dev/null || \
     --from-literal=DB_PASSWORD=postgres
 
 # Appliquer les prérequis (RBAC, quota, PSS, postgres) qui ne sont PAS dans le chart
-kubectl apply -f k8s/postgres-storage.yaml
-kubectl apply -f k8s/postgres-deployment.yaml
-kubectl apply -f k8s/postgres-service.yaml
-kubectl apply -f k8s/rbac.yaml
-kubectl apply -f k8s/namespace-pss.yaml
-kubectl apply -f k8s/quota.yaml
+kubectl apply -f k8s/database/postgres-storage.yaml
+kubectl apply -f k8s/database/postgres-deployment.yaml
+kubectl apply -f k8s/database/postgres-service.yaml
+kubectl apply -f k8s/security/rbac.yaml
+kubectl apply -f k8s/security/namespace-pss.yaml
+kubectl apply -f k8s/security/quota.yaml
 
 # Installer le chart Minikube
 helm upgrade --install kube-train ./kube-train-chart \
@@ -130,7 +130,7 @@ kubectl get secret sh.helm.release.v1.kube-train.v1 -o yaml
 
 # Nettoyage complet
 helm uninstall kube-train
-kubectl delete -f k8s/postgres-deployment.yaml
-kubectl delete -f k8s/postgres-service.yaml
-kubectl delete -f k8s/postgres-storage.yaml
+kubectl delete -f k8s/database/postgres-deployment.yaml
+kubectl delete -f k8s/database/postgres-service.yaml
+kubectl delete -f k8s/database/postgres-storage.yaml
 ```

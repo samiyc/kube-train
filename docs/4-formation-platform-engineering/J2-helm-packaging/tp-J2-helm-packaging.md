@@ -8,13 +8,13 @@
 ## Étape 1 — Scaffolding et premier template
 
 ### Objectif
-Créer un chart Helm à partir du scaffold standard, le nettoyer, puis migrer le `Deployment` de l’API depuis `k8s/deployment-gke.yaml` vers `templates/deployment.yaml`.
+Créer un chart Helm à partir du scaffold standard, le nettoyer, puis migrer le `Deployment` de l’API depuis `k8s/workloads/deployment-gke.yaml` vers `templates/deployment.yaml`.
 
 > Fichiers sources à relire avant de commencer :
-> - `k8s/deployment-gke.yaml`
-> - `k8s/deployment.yaml`
-> - `k8s/service.yaml`
-> - `k8s/configmap.yaml`
+> - `k8s/workloads/deployment-gke.yaml`
+> - `k8s/workloads/deployment.yaml`
+> - `k8s/workloads/service.yaml`
+> - `k8s/workloads/configmap.yaml`
 
 ### Commandes
 ```bash
@@ -55,7 +55,7 @@ fullnameOverride: "kube-train"
 ```
 
 ### Exemple de `templates/deployment.yaml`
-L’objectif n’est pas de copier-coller tout `k8s/deployment-gke.yaml`, mais d’en extraire la structure utile et de remplacer les valeurs figées par des expressions Helm.
+L’objectif n’est pas de copier-coller tout `k8s/workloads/deployment-gke.yaml`, mais d’en extraire la structure utile et de remplacer les valeurs figées par des expressions Helm.
 
 ```yaml
 apiVersion: apps/v1
@@ -85,7 +85,7 @@ spec:
             - containerPort: {{ .Values.containerPort }}
 ```
 
-### Ce qu’il faut migrer depuis `k8s/deployment-gke.yaml`
+### Ce qu’il faut migrer depuis `k8s/workloads/deployment-gke.yaml`
 - `replicas` → `{{ .Values.replicaCount }}`
 - image Artifact Registry → `{{ .Values.image.repository }}` + `{{ .Values.image.tag }}`
 - `imagePullPolicy`
@@ -114,7 +114,7 @@ helm template kube-train ./kube-train-chart
 ## Étape 2 — Ajouter Service + ConfigMap et paramétrer l’environnement
 
 ### Objectif
-Migrer `k8s/service.yaml` et `k8s/configmap.yaml` vers `templates/service.yaml` et `templates/configmap.yaml`, puis injecter les variables d’environnement de façon pilotable par `values.yaml`.
+Migrer `k8s/workloads/service.yaml` et `k8s/workloads/configmap.yaml` vers `templates/service.yaml` et `templates/configmap.yaml`, puis injecter les variables d’environnement de façon pilotable par `values.yaml`.
 
 ### Commandes
 ```bash
@@ -200,7 +200,7 @@ env:
         key: API_KEY
 ```
 
-> Rappel kube-train : `API_KEY` ne mappe pas automatiquement vers `train.api.key`. On conserve donc le renommage explicite `TRAIN_API_KEY`, comme dans `k8s/deployment-gke.yaml`.
+> Rappel kube-train : `API_KEY` ne mappe pas automatiquement vers `train.api.key`. On conserve donc le renommage explicite `TRAIN_API_KEY`, comme dans `k8s/workloads/deployment-gke.yaml`.
 
 ### Vérifications
 ```bash
@@ -494,8 +494,8 @@ kubectl rollout status deployment/kube-train
 
 À la fin de J2, tu dois avoir :
 - un chart `kube-train-chart/` propre et réutilisable
-- un `Deployment` Helm dérivé de `k8s/deployment-gke.yaml`
-- un `Service` et une `ConfigMap` dérivés de `k8s/service.yaml` et `k8s/configmap.yaml`
+- un `Deployment` Helm dérivé de `k8s/workloads/deployment-gke.yaml`
+- un `Service` et une `ConfigMap` dérivés de `k8s/workloads/service.yaml` et `k8s/workloads/configmap.yaml`
 - deux overlays `values-minikube.yaml` et `values-gke.yaml`
 - un `CronJob` Helm fonctionnel
 - une stratégie de déploiement prête pour ArgoCD ou `helm upgrade --atomic`

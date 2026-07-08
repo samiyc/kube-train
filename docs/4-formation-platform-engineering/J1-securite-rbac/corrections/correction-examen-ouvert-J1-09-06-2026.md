@@ -43,8 +43,8 @@ Compléter avec les observables concrets : le pod qui viole restricted **est cr�
 
 Le principe est correct mais la question demandait de **nommer** les SA :
 
-- `kube-train-api-sa` → pour l'API Spring Boot (défini dans `k8s/rbac.yaml`)
-- `notification-sa` → pour le service notification (défini dans `k8s/rbac-gke.yaml`)
+- `kube-train-api-sa` → pour l'API Spring Boot (défini dans `k8s/security/rbac.yaml`)
+- `notification-sa` → pour le service notification (défini dans `k8s/security/rbac-gke.yaml`)
 
 Savoir nommer les objets exacts est attendu en entretien CKAD.
 

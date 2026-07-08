@@ -156,7 +156,7 @@ rules:
 - L'observabilité (alertes, dashboards) détecte-t-elle la dégradation ?
 - L'application dégrade-t-elle gracieusement (circuit breaker) ?
 
-**⚠️ Toujours désactiver** après les tests : `kubectl apply -f k8s/istio-canary.yaml` (remet le VirtualService sans fault).
+**⚠️ Toujours désactiver** après les tests : `kubectl apply -f k8s/istio/istio-canary.yaml` (remet le VirtualService sans fault).
 
 **Pièges** :
 - A : Istio ne "contourne" pas les services lents — il simule la lenteur pour tester le comportement client

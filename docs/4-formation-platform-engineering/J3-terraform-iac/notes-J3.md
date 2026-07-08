@@ -873,7 +873,7 @@ gcloud sql instances patch kube-train-db --activation-policy=NEVER --project=kub
 
 ### 11.9 `github-actions-sa` sans `roles/container.admin` → RBAC forbidden
 
-**Symptôme** : CI échoue avec `RBAC forbidden` lors du `kubectl apply -f k8s/rbac-gke.yaml`.
+**Symptôme** : CI échoue avec `RBAC forbidden` lors du `kubectl apply -f k8s/security/rbac-gke.yaml`.
 
 **Cause** : `github-actions-sa` avait `roles/container.developer` (deploy pods) mais pas `roles/container.admin` (créer Roles/RoleBindings).
 

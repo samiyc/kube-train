@@ -403,7 +403,7 @@ Le chart couvre **l'API** uniquement. Ce qui reste en dehors du chart (déployé
 **Oui.** Le chart `kube-train-chart` est conçu pour les deux environnements.
 
 #### Situation actuelle
-Le pipeline GitHub Actions (`deploy.yml`) déploie encore avec `kubectl apply -f k8s/deployment-gke.yaml`. C'est ce qui sera remplacé par Helm.
+Le pipeline GitHub Actions (`deploy.yml`) déploie encore avec `kubectl apply -f k8s/workloads/deployment-gke.yaml`. C'est ce qui sera remplacé par Helm.
 
 #### Commande dans le pipeline CI/CD (à venir J3/J4)
 
@@ -445,7 +445,7 @@ ConfigMap "kube-train-config" in namespace "default" exists and cannot be import
 label validation error: missing key "app.kubernetes.io/managed-by": must be set to "Helm"
 ```
 
-**Cause** : la ConfigMap avait été créée manuellement via `kubectl apply -f k8s/configmap.yaml` sans les métadonnées Helm. Helm refuse d'adopter des ressources qu'il ne "possède" pas.
+**Cause** : la ConfigMap avait été créée manuellement via `kubectl apply -f k8s/workloads/configmap.yaml` sans les métadonnées Helm. Helm refuse d'adopter des ressources qu'il ne "possède" pas.
 
 **Règle** : lors d'une migration `kubectl` → `Helm`, toutes les ressources gérées par le chart doivent être supprimées avant le premier `helm install`, ou annotées/labellisées manuellement pour adoption.
 
@@ -506,7 +506,7 @@ config:
 FATAL: password authentication failed for user "postgres"
 ```
 
-**Cause** : lors du patch du Secret, on a mis `DB_PASSWORD=postgres` alors que le pod PostgreSQL Minikube est configuré avec `POSTGRES_PASSWORD: "root"` (cf `k8s/postgres-deployment.yaml`).
+**Cause** : lors du patch du Secret, on a mis `DB_PASSWORD=postgres` alors que le pod PostgreSQL Minikube est configuré avec `POSTGRES_PASSWORD: "root"` (cf `k8s/database/postgres-deployment.yaml`).
 
 **À retenir** : le Secret Minikube est distinct du Secret GKE (Cloud SQL a ses propres credentials). En Minikube, le mot de passe postgres est défini dans la variable d'environnement du container postgres, pas dans un Secret K8s.
 

@@ -7,7 +7,7 @@
 #   helm install monitoring prometheus-community/kube-prometheus-stack
 #
 # Apply :
-#   kubectl apply -f k8s/servicemonitor.yaml
+#   kubectl apply -f k8s/observability/servicemonitor.yaml
 #
 # Vérification :
 #   kubectl get servicemonitor

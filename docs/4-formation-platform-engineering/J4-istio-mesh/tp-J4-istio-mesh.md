@@ -40,9 +40,9 @@ kubectl create namespace kube-train
 kubectl label namespace kube-train istio-injection=enabled --overwrite
 
 # Réappliquer ou redémarrer les workloads
-kubectl apply -f k8s/service.yaml -n kube-train
-kubectl apply -f k8s/deployment-gke.yaml -n kube-train
-kubectl apply -f k8s/notification-deployment-gke.yaml -n kube-train
+kubectl apply -f k8s/workloads/service.yaml -n kube-train
+kubectl apply -f k8s/workloads/deployment-gke.yaml -n kube-train
+kubectl apply -f k8s/workloads/notification-deployment-gke.yaml -n kube-train
 kubectl rollout restart deployment/kube-train-deployment -n kube-train
 kubectl rollout restart deployment/notification-deployment -n kube-train
 ```

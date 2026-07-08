@@ -29,16 +29,16 @@ docker compose up -d
 # Minikube — CRITICAL: build inside Minikube's Docker daemon
 eval $(minikube docker-env)
 docker build -t kube-train-api:vN .
-kubectl apply -f k8s/deployment.yaml   # imagePullPolicy: Never
+kubectl apply -f k8s/workloads/deployment.yaml   # imagePullPolicy: Never
 
 # Kubernetes order for Postgres (order matters)
-kubectl apply -f k8s/postgres-storage.yaml
-kubectl apply -f k8s/postgres-deployment.yaml
-kubectl apply -f k8s/postgres-service.yaml
-kubectl apply -f k8s/rbac.yaml          # must precede Deployment (SA reference)
-kubectl apply -f k8s/namespace-pss.yaml
-kubectl apply -f k8s/quota.yaml
-kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/database/postgres-storage.yaml
+kubectl apply -f k8s/database/postgres-deployment.yaml
+kubectl apply -f k8s/database/postgres-service.yaml
+kubectl apply -f k8s/security/rbac.yaml          # must precede Deployment (SA reference)
+kubectl apply -f k8s/security/namespace-pss.yaml
+kubectl apply -f k8s/security/quota.yaml
+kubectl apply -f k8s/workloads/deployment.yaml
 ```
 
 GKE deployment is fully automated via GitHub Actions (`.github/workflows/deploy.yml`): test → build → deploy.
@@ -61,13 +61,14 @@ helm uninstall kube-train
 - Root `pom.xml` is the parent; both services are Maven children.
 
 ### Kubernetes manifests (`k8s/`)
-Flat files — no Helm/Kustomize yet (F4-J2 goal is to create the chart).
-- `deployment.yaml` — Minikube (`imagePullPolicy: Never`)
-- `deployment-gke.yaml` — GKE (git SHA via `IMAGE_TAG_PLACEHOLDER`)
-- `notification-deployment-gke.yaml` — notification service on GKE
-- `rbac.yaml` / `rbac-gke.yaml` — ServiceAccount `kube-train-api-sa` + Role/RoleBinding (F4-J1)
-- `namespace-pss.yaml` — PSS labels (enforce: baseline, audit/warn: restricted)
-- `quota.yaml` — LimitRange + ResourceQuota
+Organisés en sous-dossiers par concern (un chart Helm existe aussi dans `kube-train-chart/`) :
+- `k8s/workloads/` — `deployment.yaml` (Minikube, `imagePullPolicy: Never`), `deployment-gke.yaml` (GKE, git SHA via `IMAGE_TAG_PLACEHOLDER`), `deployment-gke-v2.yaml` (canary), `notification-*.yaml`, `service.yaml`, `configmap.yaml`, `hpa.yaml`
+- `k8s/security/` — `rbac.yaml` / `rbac-gke.yaml` (SA `kube-train-api-sa` + Role/RoleBinding, F4-J1), `namespace-pss.yaml` (PSS enforce: baseline, audit/warn: restricted), `quota.yaml` (LimitRange + ResourceQuota), `gatekeeper-ct-*.yaml`
+- `k8s/network/` — `network-policy-*.yaml`, `ingress*.yaml`, `cluster-issuer.yaml`
+- `k8s/istio/` — `istio-*.yaml`, `authorization-policy.yaml`, `peer-authentication-strict.yaml`
+- `k8s/observability/` — `otel-collector.yaml`, `servicemonitor.yaml`, `pod-monitoring.yaml`
+- `k8s/database/` — `postgres-*.yaml`
+- `k8s/argocd/` — `application.yaml` (GitOps, dormant — ArgoCD supprimé pour le budget)
 
 ### Spring profiles & messaging
 - Profile `"gcp"` → Pub/Sub; `"!gcp"` → Kafka. GKE uses `"postgres,gcp"`.

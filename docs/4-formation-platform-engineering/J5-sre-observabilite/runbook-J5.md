@@ -4,7 +4,7 @@
 
 ```bash
 # ── Vérifier les métriques dans Cloud Monitoring ─────────────────────────────
-# Prérequis : OTel Collector déployé avec prometheus receiver (k8s/otel-collector.yaml)
+# Prérequis : OTel Collector déployé avec prometheus receiver (k8s/observability/otel-collector.yaml)
 # Prérequis WI : default SA annoté + binding compute SA
 
 TOKEN=$(gcloud auth print-access-token)
@@ -101,8 +101,8 @@ kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/
 kubectl rollout status deployment/gatekeeper-controller-manager -n gatekeeper-system
 kubectl rollout status deployment/gatekeeper-audit -n gatekeeper-system
 
-kubectl apply -f k8s/gatekeeper-ct-allowed-repos.yaml
-kubectl apply -f k8s/gatekeeper-ct-required-limits.yaml
+kubectl apply -f k8s/security/gatekeeper-ct-allowed-repos.yaml
+kubectl apply -f k8s/security/gatekeeper-ct-required-limits.yaml
 sleep 15
 
 kubectl apply -f - << 'EOF'

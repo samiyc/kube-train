@@ -537,7 +537,7 @@ kubectl exec plain-client -- curl http://notification-service:8081/actuator/heal
 
 ### 10.7 deployment-gke-v2.yaml avec `IMAGE_TAG_PLACEHOLDER`
 
-**Symptôme** : `kubectl apply -f k8s/deployment-gke-v2.yaml` → pod en `ImagePullBackOff` / `ErrImagePull`.
+**Symptôme** : `kubectl apply -f k8s/workloads/deployment-gke-v2.yaml` → pod en `ImagePullBackOff` / `ErrImagePull`.
 
 **Cause** : Le fichier `deployment-gke-v2.yaml` a été poussé sur GitHub avec `IMAGE_TAG_PLACEHOLDER` comme tag d'image (placeholder pour la CI/CD). L'utilisateur a appliqué le fichier **avant** que la CI/CD ait fini de remplacer le placeholder par le SHA réel.
 
@@ -551,7 +551,7 @@ kubectl set image deployment/kube-train-deployment-v2 api-container=$IMAGE
 
 **Fix durable** : Toujours `git pull` avant d'appliquer les manifests qui contiennent des tags d'images gérés par la CI/CD :
 ```bash
-git pull && kubectl apply -f k8s/deployment-gke-v2.yaml
+git pull && kubectl apply -f k8s/workloads/deployment-gke-v2.yaml
 ```
 
 ---
@@ -657,18 +657,18 @@ Le label `canonical-revision` est déduit automatiquement du label `version` —
 
 | Fichier | Rôle |
 |---|---|
-| `k8s/peer-authentication-strict.yaml` | mTLS STRICT sur notification-pod (workloadSelector) |
-| `k8s/notification-service.yaml` | Service ClusterIP pour les tests mTLS intra-cluster |
-| `k8s/network-policy-notification.yaml` | NetworkPolicy allow-ingress port 8081 (séparation L4 / L7) |
-| `k8s/istio-test-pods.yaml` | mesh-client (sidecar + SA kube-train-api-sa) + plain-client (no sidecar) |
-| `k8s/deployment-gke-v2.yaml` | Déploiement canary v2 (même image, label version: v2) |
-| `k8s/istio-canary.yaml` | DestinationRule (subsets v1/v2) + VirtualService 90/10 |
-| `k8s/authorization-policy.yaml` | AuthorizationPolicy ALLOW uniquement kube-train-api-sa → notification-pod |
-| `k8s/istio-fault-injection.yaml` | VirtualService avec 500ms fixedDelay sur /reservations |
+| `k8s/istio/peer-authentication-strict.yaml` | mTLS STRICT sur notification-pod (workloadSelector) |
+| `k8s/workloads/notification-service.yaml` | Service ClusterIP pour les tests mTLS intra-cluster |
+| `k8s/network/network-policy-notification.yaml` | NetworkPolicy allow-ingress port 8081 (séparation L4 / L7) |
+| `k8s/istio/istio-test-pods.yaml` | mesh-client (sidecar + SA kube-train-api-sa) + plain-client (no sidecar) |
+| `k8s/workloads/deployment-gke-v2.yaml` | Déploiement canary v2 (même image, label version: v2) |
+| `k8s/istio/istio-canary.yaml` | DestinationRule (subsets v1/v2) + VirtualService 90/10 |
+| `k8s/istio/authorization-policy.yaml` | AuthorizationPolicy ALLOW uniquement kube-train-api-sa → notification-pod |
+| `k8s/istio/istio-fault-injection.yaml` | VirtualService avec 500ms fixedDelay sur /reservations |
 | `infra/apis.tf` | 4 APIs GCP requises pour Cloud Service Mesh (gérées par Terraform) |
-| `k8s/deployment-gke.yaml` | Annotations Istio + label version: v1 + fix cloud-sql-proxy 128Mi |
-| `k8s/notification-deployment-gke.yaml` | Annotations Istio (excludeOutboundIPRanges + excludeInboundPorts) |
-| `k8s/quota.yaml` | Recalibré : pods 10, limits.memory 8Gi (canary + test pods) |
+| `k8s/workloads/deployment-gke.yaml` | Annotations Istio + label version: v1 + fix cloud-sql-proxy 128Mi |
+| `k8s/workloads/notification-deployment-gke.yaml` | Annotations Istio (excludeOutboundIPRanges + excludeInboundPorts) |
+| `k8s/security/quota.yaml` | Recalibré : pods 10, limits.memory 8Gi (canary + test pods) |
 
 ---
 
@@ -684,7 +684,7 @@ Le label `canonical-revision` est déduit automatiquement du label `version` —
 
 ```bash
 # Fin de journée — supprimer les ressources de démo
-kubectl delete -f k8s/deployment-gke-v2.yaml
+kubectl delete -f k8s/workloads/deployment-gke-v2.yaml
 kubectl delete pod mesh-client plain-client other-client
 ```
 
@@ -710,7 +710,7 @@ kubectl delete pod mesh-client plain-client other-client
 
 `istio-fault-injection.yaml` écrase le `VirtualService kube-train-api`. Pour revenir au canary sans latence :
 ```bash
-kubectl apply -f k8s/istio-canary.yaml
+kubectl apply -f k8s/istio/istio-canary.yaml
 ```
 Cela met à jour le VirtualService existant (même `name: kube-train-api`) pour supprimer la section `fault`. La DestinationRule n'est pas affectée.
 

@@ -48,7 +48,7 @@ Vérifier le YAML pour confirmer est exactement la bonne réflexe — les connai
 
 > `resources: ["secrets"]`, `resourceNames: ["kube-train-secrets"]`, `verbs: ["get"]` — le plus restrictif.
 
-C'est exactement ce qui est implémenté dans `k8s/rbac.yaml`. Décryptage des distracteurs :
+C'est exactement ce qui est implémenté dans `k8s/security/rbac.yaml`. Décryptage des distracteurs :
 
 | Option | Problème |
 |---|---|

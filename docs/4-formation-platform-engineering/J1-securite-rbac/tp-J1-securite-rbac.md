@@ -61,7 +61,7 @@ spec:
 ### Commandes utiles
 
 ```bash
-kubectl apply -f k8s/deployment.yaml -n kube-train
+kubectl apply -f k8s/workloads/deployment.yaml -n kube-train
 kubectl rollout status deployment/kube-train-deployment -n kube-train
 kubectl get pods -n kube-train
 kubectl port-forward svc/kube-train-service 8080:80 -n kube-train
@@ -221,9 +221,9 @@ spec:
 ### Vérifications
 
 ```bash
-kubectl apply -f k8s/postgres-deployment.yaml -n kube-train
-kubectl apply -f k8s/postgres-service.yaml -n kube-train
-kubectl apply -f k8s/deployment.yaml -n kube-train
+kubectl apply -f k8s/database/postgres-deployment.yaml -n kube-train
+kubectl apply -f k8s/database/postgres-service.yaml -n kube-train
+kubectl apply -f k8s/workloads/deployment.yaml -n kube-train
 kubectl describe pod -n kube-train
 kubectl logs deployment/kube-train-deployment -c wait-for-postgres -n kube-train
 ```
@@ -263,7 +263,7 @@ kubectl label namespace kube-train \
   pod-security.kubernetes.io/audit-version=latest \
   --overwrite
 
-kubectl apply -f k8s/deployment.yaml -n kube-train
+kubectl apply -f k8s/workloads/deployment.yaml -n kube-train
 kubectl get ns kube-train --show-labels
 ```
 

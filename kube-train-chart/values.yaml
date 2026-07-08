@@ -19,7 +19,7 @@ args: []
 
 containerPort: 8080
 
-# SA existant créé par k8s/rbac.yaml — le chart ne le crée PAS
+# SA existant créé par k8s/security/rbac.yaml — le chart ne le crée PAS
 serviceAccount:
   name: kube-train-api-sa
 

@@ -99,7 +99,7 @@ a) Expliquer pourquoi Helm refuse d'adopter une ressource existante sans ces mé
 
 b) Deux solutions existent pour résoudre ce conflit. Décrire chacune et indiquer dans quel contexte préférer l'une ou l'autre.
 
-c) Si la migration Helm remplace `k8s/deployment.yaml` et `k8s/service.yaml` par le chart, que doit-on faire des fichiers `k8s/postgres-*.yaml`, `k8s/rbac.yaml` et `k8s/quota.yaml` — les mettre dans le chart ou les garder hors chart ? Justifier.
+c) Si la migration Helm remplace `k8s/workloads/deployment.yaml` et `k8s/workloads/service.yaml` par le chart, que doit-on faire des fichiers `k8s/postgres-*.yaml`, `k8s/security/rbac.yaml` et `k8s/security/quota.yaml` — les mettre dans le chart ou les garder hors chart ? Justifier.
 
 ---
 
@@ -182,7 +182,7 @@ d) `helm rollback kube-train 5` — que ferait cette commande à partir de l'ét
 
 Le pipeline GitHub Actions actuel utilise :
 ```bash
-kubectl apply -f k8s/deployment-gke.yaml
+kubectl apply -f k8s/workloads/deployment-gke.yaml
 ```
 
 On veut le remplacer par Helm.
@@ -193,4 +193,4 @@ b) `values-gke.yaml` configure `strategy.maxSurge: 0, maxUnavailable: 1`. Expliq
 
 c) En cas d'échec du déploiement avec `--rollback-on-failure`, `helm history` montrera deux nouvelles révisions. Décrire leur `STATUS` respectif. Le service reste-t-il disponible pendant le rollback ? Sur quelle version ?
 
-d) Actuellement, `k8s/rbac.yaml` (ServiceAccount + Role + RoleBinding) est appliqué séparément. Justifier la décision de le garder **hors** du chart Helm plutôt que de l'inclure dedans — et identifier un scénario où l'inclure dans le chart serait au contraire la bonne décision.
+d) Actuellement, `k8s/security/rbac.yaml` (ServiceAccount + Role + RoleBinding) est appliqué séparément. Justifier la décision de le garder **hors** du chart Helm plutôt que de l'inclure dedans — et identifier un scénario où l'inclure dans le chart serait au contraire la bonne décision.

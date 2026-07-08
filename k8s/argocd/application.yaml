@@ -20,9 +20,9 @@ spec:
     targetRevision: main
     path: k8s
     directory:
-      recurse: false
+      recurse: true   # k8s/ est organisé en sous-dossiers par concern
       # Exclure les manifests Minikube/local uniquement (tout le reste est GKE)
-      exclude: '{deployment.yaml,ingress.yaml,postgres-*.yaml,servicemonitor.yaml,argocd/**}'
+      exclude: '{workloads/deployment.yaml,network/ingress.yaml,database/postgres-*.yaml,observability/servicemonitor.yaml,argocd/**}'
 
   destination:
     server: https://kubernetes.default.svc

@@ -5,7 +5,7 @@
 # ⚠️ Attention si d'autres pods tournent dans default (postgres, etc.) :
 #    vérifier leur compatibilité baseline avant d'apply.
 #
-# Appliquer avec : kubectl apply -f k8s/namespace-pss.yaml
+# Appliquer avec : kubectl apply -f k8s/security/namespace-pss.yaml
 # Ou via labels directs :
 #   kubectl label namespace default \
 #     pod-security.kubernetes.io/enforce=baseline \

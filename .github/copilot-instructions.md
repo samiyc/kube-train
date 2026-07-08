@@ -6,7 +6,7 @@ Hands-on Kubernetes/cloud-native training project (5-day program). A Spring Boot
 
 - `kube-train-api/` — Java 21 / Spring Boot 4 REST API (Maven). Endpoints: `GET /`, `GET /trains`, `GET /trains/{id}`, `POST /reservations`, `GET /reservations/{id}`, `GET /secure`. Business logic in `TrainService` (Cloud SQL PostgreSQL). Publishes `ReservationEvent` to Kafka (local) or Pub/Sub (GKE profile "gcp").
 - `train-notification-service/` — Java 21 / Spring Boot 4 consumer. Listens on Kafka (local) or Pub/Sub (GKE profile "gcp") topic `train-reservations`, sends simulated email. Has idempotence (ConcurrentHashMap) and DLT (`train-reservations-dlt` / `train-reservations-dlq` on Pub/Sub) with dedicated consumer group `notification-dlt-group`.
-- `k8s/` — All Kubernetes manifests (flat files, no Helm/Kustomize). Deployment files: `deployment.yaml` (Minikube, `imagePullPolicy: Never`), `deployment-gke.yaml` (API on GKE, `IMAGE_TAG_PLACEHOLDER` replaced by pipeline), and `notification-deployment-gke.yaml` (notification service on GKE). GKE also has `ingress-gke.yaml` (HTTPS nip.io, cert-manager) and `cluster-issuer.yaml` (Let's Encrypt, setup one-time manual).
+- `k8s/` — All Kubernetes manifests, organised into subfolders by concern: `workloads/` (`deployment.yaml` Minikube `imagePullPolicy: Never`, `deployment-gke.yaml` with `IMAGE_TAG_PLACEHOLDER`, `notification-deployment-gke.yaml`, `service.yaml`, `configmap.yaml`, `hpa.yaml`), `security/` (rbac, PSS, quota, gatekeeper), `network/` (network-policies, `ingress-gke.yaml` HTTPS nip.io, `cluster-issuer.yaml`), `istio/`, `observability/`, `database/`, `argocd/`. A Helm chart also exists in `kube-train-chart/`.
 - `docker-compose.yml` — Kafka KRaft (no Zookeeper), single-node, port 9092. Used for local dev of both services.
 - `locustfile.py` — Load test against `/` and `/reserver` (weights 3:1).
 - `docs/readme.md` — Course roadmap and canonical cheat-sheet. Consult before suggesting CLI workflows.
@@ -26,7 +26,7 @@ Hands-on Kubernetes/cloud-native training project (5-day program). A Spring Boot
 ```bash
 eval $(minikube docker-env)        # CRUCIAL: target Minikube's Docker
 docker build -t kube-train-api:vN .
-kubectl apply -f k8s/deployment.yaml   # imagePullPolicy: Never
+kubectl apply -f k8s/workloads/deployment.yaml   # imagePullPolicy: Never
 ```
 
 **Local Maven**: `./mvnw spring-boot:run` from `kube-train-api/` or `train-notification-service/`.
@@ -65,7 +65,7 @@ kubectl apply -f k8s/deployment.yaml   # imagePullPolicy: Never
 
 ## Conventions
 
-- Manifests are flat files in `k8s/`, applied individually. Order matters for Postgres: `postgres-storage.yaml` → `postgres-deployment.yaml` → `postgres-service.yaml`.
+- Manifests live in `k8s/` subfolders by concern (`workloads/`, `security/`, `network/`, `istio/`, `observability/`, `database/`, `argocd/`), applied individually. Order matters for Postgres: `database/postgres-storage.yaml` → `database/postgres-deployment.yaml` → `database/postgres-service.yaml`.
 - Pod selector label is `app: kube-train-pod` (Deployment label is `app: kube-train`). Service selects on `kube-train-pod`.
 - Image tags for Minikube are manual integers (`v1`, `v2`, …). For GKE, the pipeline uses git SHA.
 - GKE Ingress host: `api.34.78.39.236.nip.io`. Minikube Ingress host: `api.kube-train.local` (test with `-H "Host: api.kube-train.local"`).

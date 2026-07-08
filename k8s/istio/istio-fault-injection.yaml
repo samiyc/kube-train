@@ -9,7 +9,7 @@
 #     curl -s http://kube-train-service/reservations/TEST-ID
 #   → ~500ms de plus qu'une requête normale
 #
-# ⚠️  Désactiver après le test : kubectl apply -f k8s/istio-canary.yaml
+# ⚠️  Désactiver après le test : kubectl apply -f k8s/istio/istio-canary.yaml
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:

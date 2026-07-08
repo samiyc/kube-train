@@ -2,7 +2,7 @@
 
 > Copier ce fichier sous `reponse-examen-ouvert-J1.md` (hors git).  
 > Répondre en phrases complètes avec les termes techniques. 3-5 lignes minimum par sous-question.  
-> Indiquer les fichiers YAML consultés en fin de réponse si utilisés (ex: `[src: k8s/deployment.yaml]`).
+> Indiquer les fichiers YAML consultés en fin de réponse si utilisés (ex: `[src: k8s/workloads/deployment.yaml]`).
 
 ---
 
