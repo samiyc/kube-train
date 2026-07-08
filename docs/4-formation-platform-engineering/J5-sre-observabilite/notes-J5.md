@@ -63,6 +63,8 @@ Error Budget = 100% - SLO
 SLO = 99,9%  →  EB = 0,1%  →  43,2 min/mois d'erreurs autorisées
 SLO = 99,5%  →  EB = 0,5%  →  3,6 heures/mois
 SLO = 99,0%  →  EB = 1,0%  →  7,3 heures/mois
+
+30 * 24 * 60 * 0,001 => 43,2
 ```
 
 **L'error budget donne une permission** : si le budget n'est pas consommé, l'équipe peut déployer des features risquées. Si le budget est épuisé → gel des déploiements jusqu'à la prochaine fenêtre.
