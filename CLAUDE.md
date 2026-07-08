@@ -109,7 +109,8 @@ Budget cible : ≤ 5€/jour. Stratégie : `terraform destroy` en fin de journé
 
 ### Docs de formation
 - `docs/4-formation-platform-engineering/formation-platform-engineering-plan.md` — plan complet F4
-- `docs/4-formation-platform-engineering/runbook.md` — commandes opérationnelles par journée
+- `docs/4-formation-platform-engineering/runbook.md` — index runbook (prérequis communs + debug) ; commandes par jour dans `Jx-*/runbook-Jx.md`
+- `docs/4-formation-platform-engineering/bilan.md` — bilan de fin de formation F4 (scores, livrables, re-check 12 facteurs)
 - `docs/4-formation-platform-engineering/Jx-*/notes-Jx.md` — notes de révision
 - `docs/4-formation-platform-engineering/Jx-*/qcm-Jx.md` — QCM 8 questions fin de journée
 - `docs/4-formation-platform-engineering/Jx-*/tp-Jx-*.md` — TP en 4-5 étapes progressives
