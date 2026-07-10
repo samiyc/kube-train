@@ -1,0 +1,51 @@
+# Configuration OTel Collector — stack LOCALE "sans GCP"
+#
+# 🎯 Répond à la question : "Spring Boot /actuator/prometheus → OTel Collector
+#    (prometheus receiver) → visualiser ailleurs que sur GCP ?"  → OUI.
+#
+# Flux :
+#   kube-train-api / notification (/actuator/prometheus sur l'hôte)
+#     → [prometheus receiver] scrape
+#     → [prometheus exporter] :8889
+#     → Prometheus (serveur) scrape :8889
+#     → Grafana visualise
+#
+# Les TRACES ne passent pas par ce Collector local : les apps les envoient directement
+# à Jaeger (OTLP :4317, voir docker-compose.yml). On garde ce Collector focalisé sur
+# la démo métriques pour éviter tout conflit de port host (Jaeger occupe déjà 4317).
+
+receivers:
+  # 🎯 Le cœur de la démo : le Collector SCRAPE l'endpoint Prometheus exposé par Micrometer.
+  #    Aucune dépendance GCP — c'est le même endpoint /actuator/prometheus qu'en prod.
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'kube-train-api'
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs:
+            - targets: ['host.docker.internal:8080']
+        - job_name: 'train-notification-service'
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs:
+            - targets: ['host.docker.internal:8081']
+
+processors:
+  batch:
+    timeout: 5s
+
+exporters:
+  # Ré-expose les métriques agrégées pour que le serveur Prometheus vienne les scraper.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+  # Trace de debug dans les logs du Collector (docker compose logs otel-collector).
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [prometheus, debug]

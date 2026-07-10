@@ -1,0 +1,13 @@
+# Serveur Prometheus LOCAL — scrape les métriques agrégées par l'OTel Collector.
+#
+# Chaîne : app /actuator/prometheus → OTel Collector (:8889) → Prometheus → Grafana.
+# 100 % hors GCP.
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # Les métriques des 2 services arrivent déjà agrégées par le Collector sur :8889.
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['otel-collector:8889']

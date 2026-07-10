@@ -1,0 +1,57 @@
+# Stack d'observabilité LOCALE "sans GCP" — métriques
+#
+# 🎯 Démontre : Spring Boot /actuator/prometheus → OTel Collector (prometheus receiver)
+#    → Prometheus → Grafana. Zéro GCP, zéro Cloud Monitoring.
+#
+# Les TRACES (démo trace complète api → notification) passent par Jaeger dans
+# docker-compose.yml — voir docs/4-formation-platform-engineering/extra/otel-local-stack-runbook.md
+#
+# Prérequis : les 2 apps tournent sur l'hôte (ports 8080 et 8081) avec l'agent OTel.
+#
+# Usage :
+#   docker compose -f docker-compose.observability.yml up -d
+#   # Grafana   → http://localhost:3000  (anonyme, datasource Prometheus pré-câblée)
+#   # Prometheus→ http://localhost:9090
+#   # Collector → http://localhost:8889/metrics  (métriques agrégées)
+#   docker compose -f docker-compose.observability.yml down
+
+services:
+  # OTel Collector — scrape /actuator/prometheus des apps (sur l'hôte) et ré-expose sur :8889
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.100.0
+    container_name: otel-collector-local
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./observability/otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "8889:8889"   # métriques agrégées (scrapées par Prometheus)
+    extra_hosts:
+      # Permet au conteneur de joindre les apps qui tournent sur l'hôte (host.docker.internal)
+      - "host.docker.internal:host-gateway"
+
+  # Prometheus — scrape le Collector (:8889) et stocke les séries temporelles
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus-local
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - otel-collector
+
+  # Grafana — visualise les métriques Prometheus (datasource auto-provisionnée)
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana-local
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana-datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus

@@ -14,16 +14,17 @@
 2. **Couverture** — combler les gaps CKAD non couverts F2-F4 (Kustomize, patterns multi-container, `kubectl explain`, Jobs/CronJobs avancés).
 3. **Reproductibilité** — chaque examen blanc est rejouable (environnement + procédure de reset), pour s'entraîner par répétition.
 4. **Rétention** — ancrer via examens ouverts quotidiens + Anki + NotebookLM.
-5. **Local-first** — tout sur Minikube pour tenir le budget ≤ 5 €/jour (GCP réactivé seulement pour les labs haut-ROI).
+5. **GCP-first puis local-first** — exploiter l'essai GCP actif pour les derniers labs haut-ROI, puis basculer CKAD 100 % Minikube à partir d'août.
 
 ---
 
 ## 💰 Contexte budgétaire & timeline
 
-> **Essai GCP se termine fin juillet. Vacances à partir du vendredi 24 juillet.**
+> **Essai GCP toujours actif (extension) avec ~100 € restants. Vacances à partir du vendredi 24 juillet.**
 
-- **Avant le 24/07** (essai actif) : faire les **labs GCP haut-ROI** (voir section dédiée) pendant que les crédits sont disponibles.
-- **À partir d'août** (retour) : **priorité Minikube/local**. GCP réactivé ponctuellement, toujours avec `terraform destroy` en fin de session, objectif ≤ 5 €/jour.
+- **Tant que l'essai dure** : priorité aux **labs GCP haut-ROI** (Phase 0) pour capter les derniers services managés utiles avant de revenir au local.
+- **Discipline budget** : objectif ≤ 5 €/jour, labs time-boxés, `terraform destroy` en fin de session, suppression/arrêt des ressources coûteuses.
+- **À partir d'août** (retour) : **CKAD local-first sur Minikube**. GCP réactivé seulement ponctuellement si un lab haut-ROI reste à finir.
 - Le CKAD se prépare et se passe **entièrement en local** — aucune dépendance GCP.
 
 ---
@@ -32,11 +33,11 @@
 
 | Élément | Description |
 |---------|-------------|
-| **Durée** | 8 jours (J1-J8) : 6 drills + 2 examens |
+| **Durée** | Phase 0 GCP-first (avant fin d'essai) + 8 jours CKAD (J1-J8) : 6 drills + 2 examens |
 | **Matin** | Théorie ciblée CKAD + démo impérative (générer le YAML à la volée) |
 | **Après-midi** | Drill chronométré : 8-12 micro-tâches type examen, timées |
 | **Fin de journée** | Examen ouvert (questions de compréhension) + création de cartes Anki sur les ratés |
-| **Environnement** | Minikube local (Docker driver, WSL) |
+| **Environnement** | Phase 0 : GCP/GKE time-boxé ; J1-J8 : Minikube local (Docker driver, WSL) |
 | **Livrables** | `notes-Jx.md` + `examen-ouvert-Jx.md` + section runbook par jour |
 
 **Principe drill** : contrairement à F4 (escalier de complexité), F5 privilégie le **volume et la vitesse** — beaucoup de petites tâches répétées jusqu'à l'automatisme, comme à l'examen.
@@ -62,6 +63,25 @@ complete -o default -F __start_kubectl k
 ---
 
 ## 📅 Programme détaillé
+
+---
+
+### Phase 0 — GCP-first (avant fin d'essai)
+
+**Objectif** : maximiser la valeur de l'essai GCP restant (~100 €) avant de basculer sur les drills CKAD locaux. Phase prioritaire, pré-CKAD, time-boxée : chaque lab ≤ 1 demi-journée, `terraform destroy` en fin de session.
+
+| Feature | Valeur (certif/mission) | Effort |
+|---------|-------------------------|--------|
+| **Cloud Deploy** (delivery pipeline managé) | GCP DevOps Engineer — progressive delivery managée | Moyen |
+| **Cloud Build triggers** (build sur push) | Alternative managée à GitHub Actions | Faible |
+| **Binary Authorization** (attestation d'images) | Supply chain security, aligne avec Gatekeeper F4 | Moyen |
+| **GKE Cost insights / Recommender** | FinOps, optimisation coût | Faible |
+| **Cloud Trace + Profiler** | Complète l'OTel de F4, observabilité prod | Faible |
+| **Gemini Cloud Assist** | Productivité ops, sujet 2026 GCP Developer | Faible |
+
+> ⚠️ Ces labs sont **hors périmètre CKAD** (qui reste 100 % local). Ils servent la certif GCP DevOps ultérieure et passent avant J1-J8 uniquement pendant l'essai actif.
+
+**Livrables Phase 0** : notes courtes par lab + section runbook dédiée (commandes, cleanup, coût observé). Pas d'examen ouvert CKAD sur cette phase.
 
 ---
 
@@ -256,23 +276,6 @@ complete -o default -F __start_kubectl k
 
 ---
 
-## 🚀 Features GCP haut-ROI — À FAIRE AVANT LE 24/07 (essai actif)
-
-> Objectif : maximiser la valeur de l'essai GCP restant avant sa fin. Time-boxé, chaque lab ≤ 1 demi-journée, `destroy` après.
-
-| Feature | Valeur (certif/mission) | Effort |
-|---------|-------------------------|--------|
-| **Cloud Deploy** (delivery pipeline managé) | GCP DevOps Engineer — progressive delivery managée | Moyen |
-| **Cloud Build triggers** (build sur push) | Alternative managée à GitHub Actions | Faible |
-| **Binary Authorization** (attestation d'images) | Supply chain security, aligne avec Gatekeeper F4 | Moyen |
-| **GKE Cost insights / Recommender** | FinOps, optimisation coût | Faible |
-| **Cloud Trace + Profiler** | Complète l'OTel de F4, observabilité prod | Faible |
-| **Gemini Cloud Assist** | Productivité ops, sujet 2026 GCP Developer | Faible |
-
-> ⚠️ Ces labs sont **hors périmètre CKAD** (qui est 100 % local). Ils servent la certif GCP DevOps ultérieure. À ne faire que si le temps le permet avant les vacances.
-
----
-
 ## 🧠 Stratégie de révision (outils)
 
 > Détail complet dans `docs/3-formation-cloud-native-beyond/extra/outils-revision-apprentissage.md`.
@@ -312,19 +315,19 @@ Les frontières se recouvrent : un senior cloud-native (profil visé) touche sou
 - [ ] `notes-Jx.md` pour J1-J6 (théorie ciblée CKAD + cheatsheets impératives)
 - [ ] `examen-ouvert-Jx.md` pour J1-J6 (un par jour de drill)
 - [ ] 2 examens blancs chronométrés reproductibles (J7, J8) + résultats
-- [ ] Runbook F5 (sections par jour, commandes Minikube-first)
+- [ ] Runbook F5 (Phase 0 GCP + sections par jour J1-J8, commandes Minikube-first pour CKAD)
 - [ ] Deck Anki alimenté (tâches ratées + questions ouvertes)
 - [ ] Décision de date d'examen CKAD + planning Killer.sh
-- [ ] (Optionnel, avant 24/07) 2-3 labs GCP haut-ROI documentés
+- [ ] Phase 0 prioritaire : 2-3 labs GCP haut-ROI documentés tant que l'essai actif dure
 
 ---
 
 ## 🗓️ Planning suggéré
 
 ```
-Avant le 24/07 (essai GCP actif) : labs GCP haut-ROI (optionnel) + cleanup infra
+Tant que l'essai GCP actif dure (~100 € restants) : Phase 0 — labs GCP haut-ROI prioritaires + cleanup infra
 Vacances : 24/07 → mi-août
-Retour août (local-first Minikube) :
+Retour août (CKAD local-first Minikube) :
   Semaine 1 : J1 (core) + J2 (config/security) + J3 (multi-container)
   Semaine 2 : J4 (networking) + J5 (observability) + J6 (deployment/kustomize)
   Semaine 3 : J7 (examen blanc 1) + Killer.sh session 1 + révision lacunes
@@ -339,11 +342,11 @@ Retour août (local-first Minikube) :
 |--------|---------------------------|----------------|
 | **But** | Construire une plateforme production-ready | Réussir la certif CKAD (vitesse + couverture) |
 | **Style TP** | Escalier de complexité (4-5 étapes) | Drills volumineux et chronométrés |
-| **Environnement** | GKE (cloud) | Minikube (local, budget-first) |
+| **Environnement** | GKE (cloud) | Phase 0 GCP-first, puis Minikube (CKAD local-first) |
 | **Rythme** | Approfondissement | Vitesse (~6-8 min/tâche) |
 | **Évaluation** | QCM 8 questions | Examens ouverts + examens blancs chrono |
 | **Outil clé** | Helm/Terraform/Istio | `kubectl` impératif + Kustomize |
 
 ---
 
-*Dernière mise à jour : 2026-07-08*
+*Dernière mise à jour : 2026-07-09*

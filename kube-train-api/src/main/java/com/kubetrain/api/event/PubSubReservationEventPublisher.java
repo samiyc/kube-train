@@ -67,10 +67,13 @@ public class PubSubReservationEventPublisher implements ReservationEventPublishe
         try {
             String json = objectMapper.writeValueAsString(event);
             ByteString data = ByteString.copyFromUtf8(json);
-            PubsubMessage message = PubsubMessage.newBuilder()
+            PubsubMessage.Builder messageBuilder = PubsubMessage.newBuilder()
                     .setData(data)
-                    .putAttributes("reservationId", event.reservationId())
-                    .build();
+                    .putAttributes("reservationId", event.reservationId());
+            // Propagation du contexte de trace (traceparent W3C) → la trace continue jusqu'au consumer.
+            // Pub/Sub n'est pas auto-instrumenté par l'agent OTel (contrairement à Kafka) → injection manuelle.
+            TracePropagation.currentTraceAttributes().forEach(messageBuilder::putAttributes);
+            PubsubMessage message = messageBuilder.build();
 
             ApiFuture<String> future = publisher.publish(message);
             String messageId = future.get(10, TimeUnit.SECONDS);

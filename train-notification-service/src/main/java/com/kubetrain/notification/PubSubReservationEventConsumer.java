@@ -6,6 +6,9 @@ import com.google.cloud.pubsub.v1.Subscriber;
 import com.google.pubsub.v1.ProjectSubscriptionName;
 import com.google.pubsub.v1.PubsubMessage;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -62,12 +65,18 @@ public class PubSubReservationEventConsumer {
         ProjectSubscriptionName subscriptionName = ProjectSubscriptionName.of(projectId, SUBSCRIPTION_ID);
 
         MessageReceiver receiver = (PubsubMessage message, AckReplyConsumer consumer) -> {
-            try {
+            // Rattache le traitement au trace émis par kube-train-api (traceparent dans les attributs)
+            Context parent = TracePropagation.extract(message.getAttributesMap());
+            Span span = TracePropagation.startProcessSpan(parent);
+            try (Scope scope = span.makeCurrent()) {
                 handleMessage(message);
                 consumer.ack();
             } catch (Exception e) {
+                span.recordException(e);
                 log.error("[PUBSUB-CONSUMER] Erreur traitement message {} : {}", message.getMessageId(), e.getMessage());
                 consumer.nack();  // → retry automatique → DLQ après max-delivery-attempts
+            } finally {
+                span.end();
             }
         };
 
@@ -97,8 +106,9 @@ public class PubSubReservationEventConsumer {
 
         log.info("[PUBSUB-CONSUMER] Notification reçue — Réservation {} pour le train {} (passager : {})",
                 event.reservationId(), event.trainId(), event.passengerName());
-        log.info("[PUBSUB-CONSUMER] Email envoyé (simulé) à {} pour la réservation {}",
-                event.passengerName(), event.reservationId());
+        TracePropagation.sendEmailSpan(event.reservationId(), () ->
+                log.info("[PUBSUB-CONSUMER] Email envoyé (simulé) à {} pour la réservation {}",
+                        event.passengerName(), event.reservationId()));
 
         meterRegistry.counter("notifications.processed", "train_id", event.trainId()).increment();
     }

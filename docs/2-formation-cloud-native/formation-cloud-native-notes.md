@@ -852,7 +852,7 @@ meterRegistry.counter("reservations.created", "train_id", train.id()).increment(
 Prometheus doit être configuré pour **scraper** l'app via un `ServiceMonitor` (CRD fourni par le chart `kube-prometheus-stack`) :
 
 ```yaml
-# k8s/servicemonitor.yaml
+# k8s/observability/servicemonitor.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:

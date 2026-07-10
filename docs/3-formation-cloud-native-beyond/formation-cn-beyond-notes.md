@@ -292,7 +292,7 @@ Le **OTel Collector** est un proxy de télémétrie. Il reçoit des données OTL
 - Buffer et retry en cas d'indisponibilité du backend
 - Possibilité de router vers plusieurs backends simultanément
 
-**Configuration du Collector (`k8s/otel-collector.yaml`)** :
+**Configuration du Collector (`k8s/observability/otel-collector.yaml`)** :
 ```yaml
 receivers:
   otlp:

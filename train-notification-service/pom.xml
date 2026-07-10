@@ -21,6 +21,18 @@
 
 	<dependencyManagement>
 		<dependencies>
+			<!--
+				OpenTelemetry BOM — aligne opentelemetry-api + opentelemetry-context pour
+				l'EXTRACTION manuelle du contexte de trace (traceparent W3C) depuis les messages Pub/Sub.
+				Déclaré en PREMIER pour que sa version l'emporte sur celle de libraries-bom.
+			-->
+			<dependency>
+				<groupId>io.opentelemetry</groupId>
+				<artifactId>opentelemetry-bom</artifactId>
+				<version>1.45.0</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
 			<!-- Google Cloud BOM : gère les versions gRPC/Protobuf/Guava des libs GCP -->
 			<dependency>
 				<groupId>com.google.cloud</groupId>
@@ -70,6 +82,17 @@
 		<dependency>
 			<groupId>com.google.cloud</groupId>
 			<artifactId>google-cloud-pubsub</artifactId>
+		</dependency>
+
+		<!--
+			OpenTelemetry API — extraction manuelle du contexte de trace (traceparent W3C)
+			depuis les attributs du message Pub/Sub, pour rattacher le span de traitement
+			au trace parent émis par kube-train-api (voir PubSubReservationEventConsumer).
+			Runtime = fourni par l'agent OTel ; absent → no-op (dégradation propre en tests/Minikube).
+		-->
+		<dependency>
+			<groupId>io.opentelemetry</groupId>
+			<artifactId>opentelemetry-api</artifactId>
 		</dependency>
 
 		<dependency>

@@ -38,6 +38,20 @@
 	<!-- Spring Cloud BOM + Google Cloud BOM : gèrent les versions transitives -->
 	<dependencyManagement>
 		<dependencies>
+			<!--
+				OpenTelemetry BOM — aligne opentelemetry-api + opentelemetry-context.
+				🎯 Sert à la propagation MANUELLE du contexte de trace (W3C traceparent)
+				   à travers Pub/Sub, que l'agent OTel n'auto-instrumente pas (contrairement à Kafka).
+				   Déclaré en PREMIER pour que sa version l'emporte sur celle de libraries-bom.
+				   Runtime : l'implémentation vient de l'agent -javaagent ; sans agent → no-op (tests/Minikube).
+			-->
+			<dependency>
+				<groupId>io.opentelemetry</groupId>
+				<artifactId>opentelemetry-bom</artifactId>
+				<version>1.45.0</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
 			<dependency>
 				<groupId>org.springframework.cloud</groupId>
 				<artifactId>spring-cloud-dependencies</artifactId>
@@ -114,6 +128,17 @@
 		<dependency>
 			<groupId>com.google.cloud</groupId>
 			<artifactId>google-cloud-pubsub</artifactId>
+		</dependency>
+
+		<!--
+			OpenTelemetry API — propagation manuelle du contexte de trace (traceparent W3C)
+			injecté dans les attributs du message Pub/Sub (voir PubSubReservationEventPublisher).
+			🎯 Kafka est auto-instrumenté par l'agent (headers) ; Pub/Sub ne l'est pas → injection manuelle.
+			   Runtime = fourni par l'agent OTel ; agent absent → propagateur/span no-op (dégradation propre).
+		-->
+		<dependency>
+			<groupId>io.opentelemetry</groupId>
+			<artifactId>opentelemetry-api</artifactId>
 		</dependency>
 
 		<!-- Driver PostgreSQL (runtime : utilisé uniquement lors de l'exécution, pas à la compilation) -->

@@ -130,9 +130,9 @@ docker build -t kube-train-api:v5 ./kube-train-api
 docker image ls | grep kube-train-api
 
 # Apply service mis à jour (port nommé) + ServiceMonitor
-kubectl apply -f k8s/service.yaml
-kubectl apply -f k8s/servicemonitor.yaml
-kubectl apply -f k8s/deployment.yaml  # si besoin de passer en v5
+kubectl apply -f k8s/workloads/service.yaml
+kubectl apply -f k8s/observability/servicemonitor.yaml
+kubectl apply -f k8s/workloads/deployment.yaml  # si besoin de passer en v5
 ```
 #### K8s context
 ```
@@ -286,7 +286,7 @@ kubectl logs -n cert-manager -l app.kubernetes.io/component=cainjector --tail=5
 
 # 7. Appliquer le ClusterIssuer Let's Encrypt (email jamais commité)
 sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|ton-email@gmail.com|g" \
-    k8s/cluster-issuer.yaml | kubectl apply -f -
+    k8s/network/cluster-issuer.yaml | kubectl apply -f -
 
 # Vérifier (READY=True + ACMEAccountRegistered = OK)
 kubectl get clusterissuer letsencrypt-prod
@@ -449,7 +449,7 @@ helm install monitoring prometheus-community/kube-prometheus-stack \
 kubectl get pods -w
 
 # 4. Appliquer le ServiceMonitor (maintenant que le CRD existe)
-kubectl apply -f k8s/servicemonitor.yaml
+kubectl apply -f k8s/observability/servicemonitor.yaml
 
 # Verif. Doit lister kube-train-monitor
 kubectl get servicemonitor

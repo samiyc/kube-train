@@ -68,9 +68,12 @@ public class ReservationEventConsumer {
                 event.price());
 
         // Simulation d'envoi de notification (email, SMS, push...)
-        log.info("[CONSUMER] Email envoyé (simulé) à {} pour la réservation {}",
-                event.passengerName(),
-                event.reservationId());
+        // Span enfant explicite « send-email » → visible dans la trace.
+        // L'agent OTel a déjà propagé le contexte via les headers Kafka (parent = span producer de l'API).
+        TracePropagation.sendEmailSpan(event.reservationId(), () ->
+                log.info("[CONSUMER] Email envoyé (simulé) à {} pour la réservation {}",
+                        event.passengerName(),
+                        event.reservationId()));
 
         // 🎯 Micrometer counter — événements de notification traités avec succès
         // Tag "train_id" pour filtrer par train dans Grafana

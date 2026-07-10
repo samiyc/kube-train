@@ -70,7 +70,7 @@ Parfait. En entretien, préciser que le polling de 3 min peut être réduit à q
 
 3. **Git PR review** : en GitOps strict, personne ne push sur `main` directement. La suppression d'un YAML passe par une PR → review → merge. C'est LE garde-fou naturel du GitOps.
 
-**Exemple concret** : si tu supprimes `k8s/otel-collector.yaml` de Git et push → ArgoCD supprime le pod OTel Collector du cluster. Sans review, c'est dangereux.
+**Exemple concret** : si tu supprimes `k8s/observability/otel-collector.yaml` de Git et push → ArgoCD supprime le pod OTel Collector du cluster. Sans review, c'est dangereux.
 
 ---
 

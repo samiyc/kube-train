@@ -74,7 +74,7 @@ D) aurait été correct si seul le trafic client était bloqué mais pas les pro
 Le **kubelet** est un processus qui tourne **directement sur le node** (pas dans un pod). Il envoie les health probes depuis l'IP du node. Cette IP est extérieure au réseau des pods → elle tombe dans la catégorie `ipBlock`.
 
 ```yaml
-# Fix appliqué dans k8s/network-policy-api.yaml
+# Fix appliqué dans k8s/network/network-policy-api.yaml
 - ipBlock:
     cidr: 0.0.0.0/0   # ← autorise kubelet (node IP) + clients externes (LoadBalancer)
 ```

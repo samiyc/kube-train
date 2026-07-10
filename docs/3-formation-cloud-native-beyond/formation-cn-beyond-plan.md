@@ -124,14 +124,14 @@
 
 | # | Activité | Détail |
 |---|----------|--------|
-| 4 | **OTel Collector sur GKE** | Déployer un OTel Collector (DaemonSet ou Sidecar) configuré pour exporter vers Cloud Trace. Manifest dans `k8s/otel-collector.yaml`. |
+| 4 | **OTel Collector sur GKE** | Déployer un OTel Collector (DaemonSet ou Sidecar) configuré pour exporter vers Cloud Trace. Manifest dans `k8s/observability/otel-collector.yaml`. |
 | 5 | **Métriques custom** | Ajouter un compteur custom (`reservations.created`) et un histogramme (`reservation.processing.duration`). Exposer via Prometheus endpoint + scrape par le collector. |
 | 6 | **Dashboard Cloud Monitoring** | Créer un dashboard (ou documenter la création manuelle) montrant : latence P95, taux d'erreur, traces lentes. Lier avec les SLI/SLO de la Formation 2. |
 
 #### 📦 Livrables J2
 - `docker-compose.yml` mis à jour (Jaeger)
 - Dockerfiles modifiés (javaagent OTel)
-- `k8s/otel-collector.yaml` (DaemonSet + ConfigMap)
+- `k8s/observability/otel-collector.yaml` (DaemonSet + ConfigMap)
 - Variables d'environnement OTel dans `deployment-gke.yaml`
 - Métriques custom dans `TrainService`
 - Screenshot ou export du dashboard Cloud Monitoring
@@ -183,7 +183,7 @@
 
 | # | Activité | Détail |
 |---|----------|--------|
-| 4 | **Network Policies** | Créer `k8s/network-policy-default-deny.yaml` (deny all ingress). Puis `k8s/network-policy-api.yaml` (allow ingress depuis ingress-controller). `k8s/network-policy-notification.yaml` (allow depuis api uniquement). Tester avec `kubectl exec` + `curl`. |
+| 4 | **Network Policies** | Créer `k8s/network/network-policy-default-deny.yaml` (deny all ingress). Puis `k8s/network/network-policy-api.yaml` (allow ingress depuis ingress-controller). `k8s/network/network-policy-notification.yaml` (allow depuis api uniquement). Tester avec `kubectl exec` + `curl`. |
 | 5 | **OWASP headers & rate limiting** | Ajouter un filtre Spring Security pour les headers (`X-Content-Type-Options`, `X-Frame-Options`, `Strict-Transport-Security`). Configurer un rate limiter basique (Bucket4j ou Spring Cloud Gateway si applicable). |
 | 6 | **Trivy image scan dans CI** | Ajouter une étape `aquasecurity/trivy-action` dans GitHub Actions. Faire échouer le build si vulnérabilités CRITICAL ou HIGH. Scanner l'image Docker après build. |
 

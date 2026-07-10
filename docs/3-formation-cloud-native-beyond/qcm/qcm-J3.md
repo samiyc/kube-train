@@ -91,7 +91,7 @@ Notre Application ArgoCD utilise un pattern `exclude` pour éviter de synchronis
 
 A) Pourquoi exclut-on `deployment.yaml` (sans le `-gke`) ?  
 B) Pourquoi exclut-on `argocd/**` ?  
-C) Si demain on ajoute un fichier `k8s/network-policy-deny.yaml`, ArgoCD le déploiera-t-il automatiquement ? Pourquoi ?
+C) Si demain on ajoute un fichier `k8s/network/network-policy-deny.yaml`, ArgoCD le déploiera-t-il automatiquement ? Pourquoi ?
 
 ---
 
