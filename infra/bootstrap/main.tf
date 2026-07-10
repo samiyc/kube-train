@@ -25,7 +25,7 @@ data "google_project" "this" {
 # ── Service account de la CI GitHub Actions ───────────────────────────────────
 resource "google_service_account" "github_actions" {
   account_id   = "github-actions-sa"
-  display_name = "GSA pour la CI GitHub Actions"
+  display_name = "GitHub Actions - kube-train" # aligné sur l'existant
 }
 
 # Rôles nécessaires au pipeline :
