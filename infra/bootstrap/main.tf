@@ -50,8 +50,7 @@ resource "google_project_iam_member" "github_actions" {
 # ── Workload Identity Federation : GitHub Actions sans clé JSON ───────────────
 resource "google_iam_workload_identity_pool" "github" {
   workload_identity_pool_id = "github-pool"
-  display_name              = "GitHub Actions pool"
-  description               = "Fédération OIDC pour la CI kube-train"
+  display_name              = "GitHub Actions Pool" # aligné sur l'existant (pas de description)
 
   lifecycle {
     prevent_destroy = true # soft-delete 30 jours — voir en-tête
