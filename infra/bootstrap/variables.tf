@@ -15,6 +15,13 @@ variable "github_repo" {
   default     = "samiyc/kube-train"
 }
 
+# ...et seulement depuis cette branche (bloque les PR et les branches de feature).
+variable "github_branch" {
+  type        = string
+  description = "Branche autorisée à déployer"
+  default     = "main"
+}
+
 # Secrets gérés en tant que CONTENEURS uniquement — les valeurs restent hors state.
 variable "app_secrets" {
   type        = list(string)

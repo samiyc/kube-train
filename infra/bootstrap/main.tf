@@ -61,16 +61,17 @@ resource "google_iam_workload_identity_pool" "github" {
 resource "google_iam_workload_identity_pool_provider" "github" {
   workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
   workload_identity_pool_provider_id = "github-provider"
-  display_name                       = "GitHub OIDC"
+  display_name                       = "GitHub Provider"
 
   attribute_mapping = {
     "google.subject"       = "assertion.sub"
     "attribute.repository" = "assertion.repository"
-    "attribute.actor"      = "assertion.actor"
   }
 
-  # Verrou : seul le dépôt déclaré peut obtenir un token, quel que soit le workflow.
-  attribute_condition = "assertion.repository == \"${var.github_repo}\""
+  # Double verrou : seul le dépôt déclaré ET la branche déclarée peuvent échanger
+  # un token OIDC contre un token GCP. Retirer la condition sur `ref` permettrait
+  # à n'importe quelle branche (donc à n'importe quelle PR) de déployer.
+  attribute_condition = "assertion.repository=='${var.github_repo}' && assertion.ref=='refs/heads/${var.github_branch}'"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"

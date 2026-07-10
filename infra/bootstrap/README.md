@@ -29,6 +29,34 @@ plus irrécupérables portent en plus `prevent_destroy = true`.
 Ces ressources existent déjà (créées à la main). Il faut les **importer**, sinon
 `apply` échouerait en `409 AlreadyExists`.
 
+### Avant tout : comparer le code à la réalité
+
+Le code doit refléter l'existant **avant** l'apply, sinon Terraform « corrigerait »
+une config de sécurité en service.
+
+```bash
+PROJECT=kube-train-project
+
+# Provider OIDC — vérifié le 2026-07-10 :
+#   attributeCondition: assertion.repository=='samiyc/kube-train' && assertion.ref=='refs/heads/main'
+#   attributeMapping:   google.subject, attribute.repository
+gcloud iam workload-identity-pools providers describe github-provider \
+  --location=global --workload-identity-pool=github-pool \
+  --project=$PROJECT --format=yaml
+
+# Pool — comparer displayName / description
+gcloud iam workload-identity-pools describe github-pool \
+  --location=global --project=$PROJECT --format=yaml
+
+# Binding sur le SA — vérifier le principalSet exact
+gcloud iam service-accounts get-iam-policy \
+  github-actions-sa@$PROJECT.iam.gserviceaccount.com \
+  --project=$PROJECT --format=yaml
+```
+
+> ⚠️ `attribute_condition` restreint le dépôt **et la branche**. Le relâcher
+> laisserait n'importe quelle branche (donc n'importe quelle PR) déployer en prod.
+
 ```bash
 cd /mnt/c/DEVDIR/GITHUB/kube-train/infra/bootstrap
 terraform init
