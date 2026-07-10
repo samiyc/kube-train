@@ -60,7 +60,7 @@ spec:
           emptyDir: {}
       containers:
       - name: notification-container
-        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/train-notification-service:7020d8d8d52a607cd676eb54e9bc48f3a52eeccb
+        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/train-notification-service:d41965e964ff5bf05f8b2cec92ee35aa20416e98
         imagePullPolicy: Always
         ports:
         - containerPort: 8081
