@@ -125,29 +125,29 @@ Les examens ouverts (excellents pour la profondeur) n'ont été faits qu'en J1/J
 ## Architecture finale F4
 
 ```
-┌─ GitHub ──────────────────────────────────────────────────────────────────┐
-│  PR → terraform plan (commentaire)   │   push main → deploy.yml (CI/CD)     │
-│  merge → terraform apply             │   test → build → deploy (Helm/kubectl)│
-└───────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─ GKE Autopilot (europe-west1) — provisionné par Terraform ─────────────────┐
-│                                                                            │
-│  Cloud Service Mesh (Istio managé — Traffic Director)                      │
-│  ┌─ kube-train-api (3/3) ────────┐   mTLS   ┌─ notification (2/2) ──────┐   │
-│  │ api + cloud-sql-proxy + envoy │◄─STRICT─►│ notif-container + envoy   │   │
-│  │ securityContext restricted    │          │ AuthorizationPolicy SPIFFE│   │
-│  │ SA dédié + RBAC               │          └───────────────────────────┘   │
-│  │ VirtualService canary 90/10   │                                          │
-│  └───────────────┬───────────────┘                                          │
-│                  ▼                                                          │
-│  Cloud SQL (Terraform) · Pub/Sub (Terraform) · Artifact Registry            │
-│                                                                            │
-│  Observabilité : OTel Collector → Cloud Monitoring                          │
-│    └─ 2 SLOs + alerte burn rate 14,4× + dashboard Golden Signals            │
-│  Policy : Gatekeeper (registres autorisés + resource limits requis)         │
-│  Packaging : Helm chart (values-minikube / values-gke)                      │
-└────────────────────────────────────────────────────────────────────────────┘
+┌─ GitHub ───────────────────────────────────────────────────────────────────────┐
+│  PR → terraform plan (commentaire)   │   push main → deploy.yml (CI/CD)        │
+│  merge → terraform apply             │   test → build → deploy (Helm/kubectl)  │
+└────────────────────────────────────────────────────────────────────────────────┘
+                   │
+                   ▼
+┌─ GKE Autopilot (europe-west1) — provisionné par Terraform ─────────────────────┐
+│                                                                                │
+│  Cloud Service Mesh (Istio managé — Traffic Director)                          │
+│  ┌─ kube-train-api (3/3) ────────┐            ┌─ notification (2/2) ───────┐   │
+│  │ api + cloud-sql-proxy + envoy │    mTLS    │ notif-container + envoy    │   │
+│  │ securityContext restricted    │◄─ STRICT ─►│ AuthorizationPolicy SPIFFE │   │
+│  │ SA dédié + RBAC               │            └────────────────────────────┘   │
+│  │ VirtualService canary 90/10   │                                             │
+│  └───────────────┬───────────────┘                                             │
+│                  ▼                                                             │
+│  Cloud SQL (Terraform) · Pub/Sub (Terraform) · Artifact Registry               │
+│                                                                                │
+│  Observabilité : OTel Collector → Cloud Monitoring                             │
+│    └─ 2 SLOs + alerte burn rate 14,4× + dashboard Golden Signals               │
+│  Policy : Gatekeeper (registres autorisés + resource limits requis)            │
+│  Packaging : Helm chart (values-minikube / values-gke)                         │
+└────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---

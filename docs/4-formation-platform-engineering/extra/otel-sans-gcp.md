@@ -14,7 +14,7 @@
 ```
 [ App instrumentée ]→ (OTLP / scrape) → [ Collector (optionnel) ] → (exporter) → [ Backend ]
                                                                                     │
-                        Le SEUL élément spécifique GCP est l'EXPORTER ─────────────┘
+                        Le SEUL élément spécifique GCP est l'EXPORTER ──────────────┘
 ```
 
 Sur kube-train, `k8s/observability/otel-collector.yaml` utilise l'exporter `googlecloud`.
