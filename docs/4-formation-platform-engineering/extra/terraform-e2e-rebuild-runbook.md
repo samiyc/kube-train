@@ -72,6 +72,16 @@ Terraform provisionne **l'infra seulement** :
 - pas de déploiement applicatif ;
 - pas d'installation `nginx-ingress`, `cert-manager`, Gatekeeper ou Istio.
 
+> **Deux states Terraform depuis le 2026-07-10 :**
+>
+> | State | Prefix GCS | Contenu | Cycle |
+> |---|---|---|---|
+> | `infra/` | `platform-engineering/dev` | cluster, Cloud SQL, Pub/Sub, registry, SA applicatifs (dont `otel-collector-sa`), APIs | `destroy`/`apply` quotidien |
+> | `infra/bootstrap/` | `platform-engineering/bootstrap` | `github-actions-sa` + rôles, pool/provider WIF, conteneurs Secret Manager | **jamais détruit** |
+>
+> Les APIs (`apis.tf`) sont dans `infra/` mais en `disable_on_destroy = false` :
+> un destroy ne les désactive jamais. Voir `infra/bootstrap/README.md`.
+
 ### 2.5 Points d'attention Terraform
 
 | Point | Risque | Action recommandée |

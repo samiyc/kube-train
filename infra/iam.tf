@@ -77,14 +77,11 @@ resource "google_service_account_iam_member" "otel_workload_identity" {
   member             = "serviceAccount:${var.project_id}.svc.id.goog[default/otel-collector-sa]"
 }
 
-resource "google_project_iam_member" "github_actions_container_admin" {
-  project = var.project_id
-  role    = "roles/container.admin"
-  member  = "serviceAccount:github-actions-sa@${var.project_id}.iam.gserviceaccount.com"
-}
-
-resource "google_project_iam_member" "github_actions_secret_accessor" {
-  project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:github-actions-sa@${var.project_id}.iam.gserviceaccount.com"
-}
+# ── CI GitHub Actions ─────────────────────────────────────────────────────────
+# Le service account `github-actions-sa`, ses rôles et la fédération Workload
+# Identity ont été déplacés dans infra/bootstrap/ (state séparé).
+#
+# Raison : ils étaient détruits/recréés à chaque cycle destroy/apply. Or le rôle
+# artifactregistry.writer est nécessaire au job `build`, qui tourne à chaque push
+# même sans cluster — un destroy cassait donc la CI. La couche identité doit
+# survivre au cycle de vie de l'infra applicative.
