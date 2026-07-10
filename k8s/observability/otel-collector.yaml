@@ -6,19 +6,16 @@
 #       → OTel Collector (googlecloud exporter)
 #       → Cloud Trace (GCP)
 #
-# ⚠️ Prérequis GCP (à exécuter une seule fois avant le premier déploiement) :
-#
-#   # Activer l'API Cloud Trace
-#   gcloud services enable cloudtrace.googleapis.com --project=kube-train-project
-#
-#   # Vérifier que le compute SA a le rôle cloudtrace.agent
-#   # (en général déjà inclus si le SA a roles/editor par défaut)
-#   gcloud projects add-iam-policy-binding kube-train-project \
-#     --member="serviceAccount:399291708401-compute@developer.gserviceaccount.com" \
-#     --role="roles/cloudtrace.agent"
+# Identité GCP : ServiceAccount dédié `otel-collector-sa` (jamais le KSA `default`).
+# Le GSA, ses rôles (cloudtrace.agent + monitoring.metricWriter) et le binding
+# Workload Identity sont gérés par Terraform (infra/iam.tf). L'annotation du KSA
+# est portée par ce manifeste → aucune étape manuelle, survit aux rebuilds.
 #
 # Le collector utilise Application Default Credentials (ADC) via Workload Identity —
 # même mécanisme que le Cloud SQL Auth Proxy et le Pub/Sub client.
+#
+# ⚠️ Prérequis GCP restant : l'API Cloud Trace doit être activée sur le projet
+#   gcloud services enable cloudtrace.googleapis.com --project=kube-train-project
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -67,6 +64,16 @@ data:
           processors: [memory_limiter, batch]
           exporters: [googlecloud]
 ---
+# KSA dédié, lié au GSA otel-collector-sa via Workload Identity (cf. infra/iam.tf).
+# L'annotation doit être présente AVANT le démarrage du pod, sinon le collector
+# n'obtient aucune identité GCP → PermissionDenied sur cloudtrace/monitoring.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector-sa
+  annotations:
+    iam.gke.io/gcp-service-account: otel-collector-sa@kube-train-project.iam.gserviceaccount.com
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -83,6 +90,9 @@ spec:
       labels:
         app: otel-collector
     spec:
+      serviceAccountName: otel-collector-sa
+      # Workload Identity passe par le metadata server GKE, pas par le token projeté :
+      # on peut donc garder l'automount désactivé (durcissement F4-J1).
       automountServiceAccountToken: false
       containers:
       - name: otel-collector

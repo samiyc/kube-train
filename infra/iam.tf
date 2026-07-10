@@ -45,6 +45,38 @@ resource "google_service_account_iam_member" "notification_workload_identity" {
   member             = "serviceAccount:${var.project_id}.svc.id.goog[default/notification-sa]"
 }
 
+# ── OTel Collector ────────────────────────────────────────────────────────────
+# GSA dédié : le collector exporte les traces (Cloud Trace) et les métriques
+# (Cloud Monitoring). Avant, il tournait sur le KSA `default` non annoté, ce qui
+# provoquait un PermissionDenied après chaque rebuild du cluster (fix manuel).
+# Désormais entièrement déclaratif : GSA + rôles + binding WI ici, annotation du
+# KSA dans k8s/observability/otel-collector.yaml.
+resource "google_service_account" "otel_collector" {
+  account_id   = "otel-collector-sa"
+  display_name = "GSA pour l'OTel Collector"
+}
+
+# cloudtrace.traces.patch — export des spans vers Cloud Trace
+resource "google_project_iam_member" "otel_cloudtrace_agent" {
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${google_service_account.otel_collector.email}"
+}
+
+# monitoring.timeSeries.create + metricDescriptors.create — export des métriques
+resource "google_project_iam_member" "otel_metric_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.otel_collector.email}"
+}
+
+# namespace default (le collector tourne dans default)
+resource "google_service_account_iam_member" "otel_workload_identity" {
+  service_account_id = google_service_account.otel_collector.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[default/otel-collector-sa]"
+}
+
 resource "google_project_iam_member" "github_actions_container_admin" {
   project = var.project_id
   role    = "roles/container.admin"
