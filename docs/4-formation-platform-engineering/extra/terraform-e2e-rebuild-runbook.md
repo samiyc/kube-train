@@ -496,6 +496,8 @@ Ces deux commandes doivent échouer si les ressources ont bien été détruites.
 
 | Piège | Symptôme | Fix |
 |---|---|---|
+| kubeconfig périmé après rebuild | `kubectl` timeout sur l'ancienne IP du control plane (`dial tcp <ancienne-ip>:443: i/o timeout`). Un `kubectl config use-context` ne suffit pas : l'entrée elle-même est obsolète. | `terraform destroy` + `apply` recrée le control plane (nouvel endpoint + nouveau CA) sans toucher `~/.kube/config`. Relancer `gcloud container clusters get-credentials kube-train-cluster --region=europe-west1 --project=kube-train-project` (Étape 1). |
+| `https://` sur l'IP du LoadBalancer | `https://<EXTERNAL-IP>/swagger-ui/index.html` ne répond pas (rien n'écoute sur 443) | `kube-train-service` n'expose que le port 80 (`80:3xxxx/TCP`) → utiliser `http://<EXTERNAL-IP>/swagger-ui/index.html`. Le TLS ne provient que de nginx-ingress + cert-manager, via l'host `nip.io` — pas de ce Service. |
 | Workload Identity manquant | Cloud SQL / Pub/Sub / OTel en `PERMISSION_DENIED` | Annoter les KSA et vérifier les bindings `roles/iam.workloadIdentityUser`. |
 | IP LoadBalancer changée | `api.34.78.39.236.nip.io` ne pointe plus vers le bon LB | `kubectl get svc kube-train-service`, puis mettre à jour `ingress-gke.yaml`. |
 | `nginx-ingress` absent | Le step Ingress est ignoré ou l'Ingress reste sans routage | Réinstaller nginx-ingress avant `kubectl apply -f k8s/network/ingress-gke.yaml`. |
