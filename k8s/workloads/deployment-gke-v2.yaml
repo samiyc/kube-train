@@ -43,7 +43,7 @@ spec:
           emptyDir: {}
       containers:
       - name: api-container
-        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api:d41965e964ff5bf05f8b2cec92ee35aa20416e98
+        image: europe-west1-docker.pkg.dev/kube-train-project/kube-train-repo/kube-train-api:d1dc990666996a76cb3be5b4ba88d7dc73b0244a
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
