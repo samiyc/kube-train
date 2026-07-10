@@ -5,6 +5,7 @@ import com.kubetrain.api.entity.OutboxEvent;
 import com.kubetrain.api.entity.Reservation;
 import com.kubetrain.api.event.ReservationEvent;
 import com.kubetrain.api.event.ReservationEventPublisher;
+import com.kubetrain.api.event.TracePropagation;
 import com.kubetrain.api.exception.TrainNotFoundException;
 import com.kubetrain.api.repository.OutboxEventRepository;
 import com.kubetrain.api.repository.ReservationRepository;
@@ -158,12 +159,19 @@ public class TrainService {
             return;
         }
         try {
+            // Ici, Context.current() est encore la trace de la requête HTTP. On la fige dans la
+            // ligne : OutboxPoller publie plus tard, dans une autre trace, et ne pourrait plus
+            // la retrouver autrement.
+            Map<String, String> trace = TracePropagation.currentTraceAttributes();
+
             outboxEventRepository.save(OutboxEvent.builder()
                     .aggregateId(reservationId)
                     .eventType("ReservationCreated")
                     .payload(objectMapper.writeValueAsString(event))
                     .status("PENDING")
                     .createdAt(Instant.now())
+                    .traceparent(trace.get("traceparent"))
+                    .tracestate(trace.get("tracestate"))
                     .build());
             log.debug("[OUTBOX] Événement {} enregistré pour la réservation {}", event.eventId(), reservationId);
         } catch (JacksonException e) {

@@ -52,4 +52,17 @@ public class OutboxEvent {
 
     @Column(name = "processed_at")
     private Instant processedAt;
+
+    /**
+     * Contexte de trace W3C capturé au moment de l'écriture (dans la trace de la requête HTTP).
+     * OutboxPoller le restaure avant de publier, pour que notification-service rattache son
+     * span à la trace d'origine plutôt qu'à celle du scheduler.
+     * Null si aucun agent OTel n'est actif (tests, Minikube) ou pour les lignes antérieures à V4.
+     */
+    @Column(length = 64)
+    private String traceparent;
+
+    /** Complément W3C optionnel (state vendeur), persisté avec le traceparent. */
+    @Column(columnDefinition = "TEXT")
+    private String tracestate;
 }
