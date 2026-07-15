@@ -26,10 +26,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * 🎯 Équivalent de ReservationEventConsumer (Kafka) mais pour Pub/Sub.
  *  Même logique métier, même idempotence, même counter Micrometer.
  *
- * 🎯 Idempotence via messageId Pub/Sub :
- *  Pub/Sub garantit "at-least-once" (comme Kafka).
- *  messageId est unique par message → on l'utilise comme clé d'idempotence
- *  (équivalent de l'eventId côté Kafka).
+ * 🎯 Idempotence via eventId métier (PAS messageId) :
+ *  Clé de dédup = event.eventId(), identique au consumer Kafka.
+ *  Le messageId Pub/Sub serait un mauvais choix : l'outbox (kube-train-api) republie
+ *  le même événement au cycle de poll suivant s'il n'a pas été marqué PROCESSED, avec
+ *  un NOUVEAU messageId à chaque fois → une dédup par messageId ne verrait rien.
+ *  L'eventId, lui, est figé dans le payload à la création → stable à travers les
+ *  republications outbox ET les re-livraisons transport. Effectively-once garanti.
  *
  * 🎯 Ack / Nack :
  *  - consumer.ack() → message retiré de la subscription
@@ -51,7 +54,8 @@ public class PubSubReservationEventConsumer {
 
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
-    private final Set<String> processedMessageIds = ConcurrentHashMap.newKeySet();
+    // Cache des eventId déjà traités (démo — en prod : Redis/BDD partagée entre pods).
+    private final Set<String> processedEventIds = ConcurrentHashMap.newKeySet();
 
     private Subscriber subscriber;
 
@@ -93,16 +97,16 @@ public class PubSubReservationEventConsumer {
     }
 
     private void handleMessage(PubsubMessage message) throws Exception {
-        String messageId = message.getMessageId();
-
-        // Idempotence — évite le double traitement en cas de re-livraison Pub/Sub
-        if (!processedMessageIds.add(messageId)) {
-            log.warn("[PUBSUB-CONSUMER] Message déjà traité, ignoré : {}", messageId);
-            return;
-        }
-
         String payload = message.getData().toStringUtf8();
         ReservationEvent event = objectMapper.readValue(payload, ReservationEvent.class);
+
+        // Idempotence sur l'eventId métier (stable), pas le messageId Pub/Sub (voir javadoc).
+        // Déserialisation AVANT la dédup : la clé vit dans le payload.
+        if (!processedEventIds.add(event.eventId())) {
+            log.warn("[PUBSUB-CONSUMER] Événement déjà traité, ignoré : eventId={}, reservationId={}",
+                    event.eventId(), event.reservationId());
+            return;
+        }
 
         log.info("[PUBSUB-CONSUMER] Notification reçue — Réservation {} pour le train {} (passager : {})",
                 event.reservationId(), event.trainId(), event.passengerName());

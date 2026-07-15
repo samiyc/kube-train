@@ -6,6 +6,7 @@ import com.kubetrain.api.entity.Reservation;
 import com.kubetrain.api.event.ReservationEvent;
 import com.kubetrain.api.event.ReservationEventPublisher;
 import com.kubetrain.api.event.TracePropagation;
+import io.opentelemetry.api.trace.Span;
 import com.kubetrain.api.exception.TrainNotFoundException;
 import com.kubetrain.api.repository.OutboxEventRepository;
 import com.kubetrain.api.repository.ReservationRepository;
@@ -96,6 +97,12 @@ public class TrainService {
     public ReservationResponse createReservation(CreateReservationRequest request) {
         TrainResponse train = getTrainById(request.trainId());
         String reservationId = "RES-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+
+        // Expose l'ID métier sur le span racine HTTP (POST /reservations) : visible en tête
+        // de trace et recherchable via un filtre `reservation.id = RES-...` dans Cloud Trace,
+        // sans avoir à descendre jusqu'au span notification send-email.
+        Span.current().setAttribute("reservation.id", reservationId);
+
         Instant departureTime = Instant.now().plus(2, ChronoUnit.HOURS);
         String wagon = "Wagon " + (ThreadLocalRandom.current().nextInt(12) + 1);
 
