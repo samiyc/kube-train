@@ -108,8 +108,10 @@ Les examens ouverts (excellents pour la profondeur) n'ont été faits qu'en J1/J
 | `docs/readme.md` absent | Référencé par `CLAUDE.md` mais inexistant → créer (roadmap + cheat-sheet) ou corriger la référence | Basse |
 | Rétention QCM F4 | Re-passer les 5 QCM dans 2-3 semaines pour mesurer la mémorisation | Moyenne |
 | Gaps CKAD | Vitesse impérative kubectl, Kustomize, patterns multi-container → **traités en F5** | Haute |
-| Réorg repo | Split runbook F4 par jour + sous-dossiers `k8s/` par concern | En cours |
-| Budget avant vacances | `terraform destroy` + stop Cloud SQL avant le 24/07 (fin d'essai GCP fin juillet) | Haute |
+| Réorg repo | Split runbook F4 par jour + sous-dossiers `k8s/` par concern | ✅ Fait (10/07) |
+| SLO/alerte/dashboard as-code | Créés via API REST → passer en Terraform (`google_monitoring_*`) pour reproductibilité | Basse (lab GCP) |
+| Trace distribuée E2E | Propagation via Outbox api→notification + SA OTel dédié + idempotence | ✅ Fait (15/07) |
+| Budget avant vacances | `terraform destroy` + stop Cloud SQL **vendredi soir** (départ 24/07, fin d'essai GCP) | Haute |
 
 ---
 
