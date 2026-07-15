@@ -204,13 +204,18 @@
 
 ## 📦 Livrables attendus en fin de F4
 
-- [ ] Helm chart `kube-train/` fonctionnel (multi-env via values)
-- [ ] Terraform `infra/` provisionne tout GKE + Cloud SQL + IAM
+- [x] Helm chart `kube-train-chart/` fonctionnel (multi-env via values)
+- [x] Terraform `infra/` provisionne tout GKE + Cloud SQL + IAM (+ `infra/bootstrap/` identité/secrets)
 - [x] Istio mTLS + canary deployment fonctionnel
-- [ ] 2 SLOs + alertes burn rate configurés dans Cloud Monitoring
-- [ ] Tous les pods en `securityContext: restricted` + RBAC dédié
-- [ ] 5 QCMs validés (score cible : ≥ 6/8 par jour)
-- [ ] Runbook + notes de révision complètes
+- [x] 2 SLOs + alerte burn rate configurés dans Cloud Monitoring
+- [~] `securityContext` + RBAC dédié — PSS **enforce baseline** / audit-warn restricted (restricted bloqué par postgres/node-exporter existants, cf. notes-J1)
+- [x] 5 QCMs validés (37/40, ≥ 6/8 sur les 5 jours) + examens ouverts J1/J2
+- [x] Runbook (index + par jour) + notes de révision complètes + bilan
+- [x] **Bonus** : trace distribuée E2E api→notification (propagation via Outbox) — cf. `extra/trace-e2e-outbox-propagation.md`
+
+> **F4 clôturée.** Reste optionnel (hors périmètre pédagogique, technique) : vrai P95 latence
+> (histogram buckets), SLO/alerte/dashboard as-code (Terraform), `docs/readme.md` (référencé par
+> CLAUDE.md mais absent). Voir `bilan.md`.
 
 ---
 

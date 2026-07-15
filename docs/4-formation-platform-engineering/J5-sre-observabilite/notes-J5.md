@@ -632,16 +632,26 @@ Même SA manquait `roles/monitoring.metricWriter`.
 ### Blocage 5 — Workload Identity obligatoire sur GKE Autopilot
 Même avec `roles/editor` sur le compute SA, les métriques restaient bloquées. Sur GKE Autopilot, le Workload Identity est **obligatoire** — les pods sans annotation WI sur leur K8s SA n'obtiennent aucun credential GCP.  
 **Symptôme** : `PERMISSION_DENIED` (pas `UNAUTHENTICATED`) — le pod touche le metadata server mais sans binding WI il reçoit un credential vide ou rejeté.  
-**Fix** :
+
+**Fix initial (TP, manuel — annotait le KSA `default`)** :
 ```bash
 kubectl annotate serviceaccount default -n default \
   iam.gke.io/gcp-service-account=399291708401-compute@developer.gserviceaccount.com --overwrite
-
 gcloud iam service-accounts add-iam-policy-binding \
   399291708401-compute@developer.gserviceaccount.com \
   --role=roles/iam.workloadIdentityUser \
   --member="serviceAccount:kube-train-project.svc.id.goog[default/default]"
 ```
+
+> ✅ **Résolu durablement (15/07/2026) — ne plus faire le fix manuel ci-dessus.**
+> Ce `kubectl annotate` était reperdu à **chaque** rebuild du cluster. Remplacé par un
+> **ServiceAccount dédié `otel-collector-sa`**, 100 % déclaratif :
+> - `infra/iam.tf` : GSA + `roles/cloudtrace.agent` + `roles/monitoring.metricWriter` + binding WI `[default/otel-collector-sa]`
+> - `k8s/observability/otel-collector.yaml` : `ServiceAccount` annoté + `serviceAccountName` sur le pod
+>
+> La leçon reste valable (WI obligatoire sur Autopilot), mais la bonne pratique est **un SA
+> dédié par workload** (règle F4-J1), jamais le KSA `default`. Détails et validation E2E :
+> `extra/trace-e2e-outbox-propagation.md` §4.
 
 ### Blocage 6 — LoadBalancer IP changée après redéploiement
 L'IP `34.78.39.236` (nginx-ingress F3) avait changé vers `34.76.253.8`.  
@@ -660,6 +670,10 @@ Fault injection configurée avec 30% d'abort HTTP 503 → tous les curls depuis 
 Le container Spring Boot se nomme `api-container` dans le Deployment (containers : `api-container`, `cloud-sql-proxy`, `istio-proxy`).  
 **Fix** : `kubectl get pod $POD -o jsonpath='{.spec.containers[*].name}'` pour vérifier les noms avant un `exec -c`.
 
+### Blocage 10 — Idempotence Pub/Sub sur `messageId` au lieu de `eventId` (trouvé en validation E2E, 15/07)
+En observant les traces, une même réservation était traitée 2× (deux emails). Le consumer Pub/Sub dédupliquait sur le `messageId` **transport** ; or l'Outbox republie le même événement avec un **nouveau** `messageId` à chaque cycle → dédup aveugle.  
+**Fix** : dédupliquer sur `event.eventId()` (identité **métier**, figée dans le payload), comme le consumer Kafka. Détails : `extra/trace-e2e-outbox-propagation.md` §5.
+
 ---
 
 ## 12. Fichiers créés dans kube-train (récapitulatif)
@@ -669,17 +683,22 @@ Le container Spring Boot se nomme `api-container` dans le Deployment (containers
 | `k8s/observability/pod-monitoring.yaml` | PodMonitoring GMP (scraping via Google Managed Prometheus) | Créé — GMP ne scrape pas kube-train en pratique, pivotage vers OTel |
 | `k8s/network/network-policy-gmp.yaml` | Autorise port 8080 ingress depuis `gke-gmp-system` | Créé + patché (namespace corrigé) |
 | `k8s/network/network-policy-otel-scraping.yaml` | Autorise port 8080 ingress depuis le pod `otel-collector` | Créé |
-| `k8s/observability/otel-collector.yaml` | Modifié : ajout prometheus receiver + pipeline metrics | Modifié |
+| `k8s/observability/otel-collector.yaml` | prometheus receiver + pipelines traces & metrics + **SA dédié `otel-collector-sa`** (WI déclaratif) | Modifié |
 | `k8s/security/gatekeeper-ct-allowed-repos.yaml` | ConstraintTemplate : images depuis registres autorisés seulement | Créé |
 | `k8s/security/gatekeeper-ct-required-limits.yaml` | ConstraintTemplate : resource limits obligatoires sur containers | Créé |
+| `infra/iam.tf` | GSA `otel-collector-sa` + rôles cloudtrace/monitoring + binding WI (post-TP) | Modifié |
+| `kube-train-api` V4 + `TracePropagation` + `OutboxPoller` | Propagation traceparent à travers l'Outbox (trace complète api→notification) | Modifié |
+| `docs/.../extra/trace-e2e-outbox-propagation.md` | Note E2E : propagation de trace, SA dédié, idempotence, `reservation.id` | Créé |
 
-**Ressources GCP créées (non versionées) :**
+**Ressources GCP (état) :**
 - Service Cloud Monitoring `kube-train-api` → `WLmPk5jSRuy_WlzRaWAv4w`
-- SLO availability + SLO latency
-- Alert policy burn rate 14,4×
-- Notification channel email
-- Dashboard "Golden Signals"
+- SLO availability + SLO latency ⚠️ *SLO latency = proxy `_max`, pas un vrai P95 (buckets non exportés) — voir §10*
+- Alert policy burn rate 14,4× · Notification channel email · Dashboard "Golden Signals"
 - Gatekeeper Constraints `allowed-repos-kube-train` + `required-limits-kube-train` (en `warn`)
+- GSA `otel-collector-sa` — **désormais dans Terraform** (`infra/iam.tf`), plus de fix manuel
+
+> ⚠️ Les SLO/alerte/dashboard restent créés via **API REST** (pas Terraform) → non reproductibles
+> automatiquement. Candidat pour un lab GCP haut-ROI (`google_monitoring_slo`, `_alert_policy`, `_dashboard`).
 
 ---
 
@@ -719,3 +738,34 @@ Si SLO violé (budget 0%) → post-mortem obligatoire avant reprise
 ```
 
 Cette politique transforme le SLO en outil de décision opérationnelle, pas juste en dashboard.
+
+---
+
+## 14. Trace distribuée complète — API → Notification (post-TP, 15/07/2026)
+
+> Prolonge le pilier **observabilité** de J5 : au-delà des métriques (SLOs) et des logs, la
+> **trace distribuée** relie une requête HTTP jusqu'à l'envoi d'email, **à travers un pattern
+> Outbox asynchrone**. Runbook complet + données réelles : `extra/trace-e2e-outbox-propagation.md`.
+
+**Le défi** : l'agent OTel auto-instrumente HTTP/JDBC/Kafka, mais **ni Pub/Sub ni la table
+Outbox**. Et l'Outbox découple l'écriture (requête HTTP) de la publication (poller `@Scheduled`,
+~5 s plus tard) → le contexte de trace meurt au `commit`.
+
+**La solution (2 propagations manuelles)** :
+1. **HTTP → Outbox** : le `traceparent` W3C est persisté dans la ligne `outbox_events`
+   (colonnes ajoutées par migration `V4`). Le poller le restaure (`makeCurrent()`) avant de publier.
+2. **Outbox → Pub/Sub → consumer** : `traceparent` injecté dans les attributs du message, extrait côté notification.
+
+**Résultat validé en réel** : la trace `POST /reservations` inclut désormais les spans
+`notification process` / `send-email` (service `train-notification-service`), décalés dans le
+temps (async) mais dans la **même trace**. L'attribut métier `reservation.id` est posé sur le
+span racine → recherche directe `reservation.id = RES-...` dans Cloud Trace.
+
+**3 découvertes de bord** (toutes corrigées, cf. Blocages 5 & 10 + note E2E) :
+- Identité du collector → **SA dédié déclaratif** (fini le `kubectl annotate` manuel).
+- Idempotence consumer → clé **`eventId` métier** (pas `messageId` transport).
+- Le pattern Outbox **rompt** la propagation automatique de contexte → la ligne persistée
+  devient le véhicule. Point clé d'architecture pour un entretien.
+
+**Golden signals — récap J5** : ✅ metrics (SLOs) · ✅ logs (Cloud Logging, ECS JSON) ·
+✅ **traces distribuées E2E** (ce §). Les trois piliers de l'observabilité sont couverts.

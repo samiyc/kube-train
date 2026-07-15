@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-Hands-on Kubernetes/cloud-native training project (5-day formation program, currently on **F4 — Platform Engineering**). A Spring Boot 4 API (`kube-train-api/`) and a notification micro-service (`train-notification-service/`) are deployed on GKE Autopilot via GitHub Actions CI/CD. Local development uses Minikube + Docker Compose.
+Hands-on Kubernetes/cloud-native training project (5-day formation program, **F4 complète — démarrage F5 (préparation CKAD)**). A Spring Boot 4 API (`kube-train-api/`) and a notification micro-service (`train-notification-service/`) are deployed on GKE Autopilot via GitHub Actions CI/CD. Local development uses Minikube + Docker Compose.
 
-Formation progression: F1 (Minikube) → F2 (Cloud Native GKE) → F3 (Beyond: OTel, ArgoCD, OAuth2) → **F4 (Platform Engineering: RBAC, Helm, Terraform, Istio, SRE)** — currently on F4-J4 (Istio).
+Formation progression: F1 (Minikube) → F2 (Cloud Native GKE) → F3 (Beyond: OTel, ArgoCD, OAuth2) → F4 (Platform Engineering: RBAC, Helm, Terraform, Istio, SRE) ✅ → **F5 (Préparation CKAD, 8 jours, local-first Minikube)**. Voir `docs/5-formation-ckad-prep/formation-ckad-prep-plan.md`.
 
 ## Environment
 
@@ -100,7 +100,9 @@ Budget cible : ≤ 5€/jour. Stratégie : `terraform destroy` en fin de journé
 | **J2** | Helm & Packaging (chart custom, templating, values multi-env, Jobs/CronJobs, helm --atomic) | ✅ Complété |
 | **J3** | Terraform IaC GCP (provider, backend GCS, Workload Identity, pipeline PR→apply) | ✅ Complété |
 | **J4** | Istio Service Mesh (mTLS, VirtualService canary, AuthorizationPolicy, fault injection) | ✅ Complété |
-| J5 | SRE pratique (SLO API Cloud Monitoring, burn rate alertes, dashboards MQL, Gatekeeper) | — |
+| **J5** | SRE pratique (SLO API Cloud Monitoring, burn rate alertes, dashboards MQL, Gatekeeper) | ✅ Complété |
+
+**F4 clôturée** (bilan : `docs/4-formation-platform-engineering/bilan.md`). Bonus post-TP : trace distribuée E2E api→notification via Outbox (`extra/trace-e2e-outbox-propagation.md`), SA dédié OTel, infra reconstructible (`infra/bootstrap/`).
 
 ### Conventions de naming F4
 - DLT Kafka Spring 4.x : `{topic}-dlt` (hyphen, lowercase). Before 4.x: `{topic}.DLT`.
