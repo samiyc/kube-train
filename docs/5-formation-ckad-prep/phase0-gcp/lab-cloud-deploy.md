@@ -424,10 +424,15 @@ kubectl delete namespace lab-cloud-deploy-staging lab-cloud-deploy-prod --ignore
 cd /mnt/c/DEVDIR/GITHUB/kube-train/infra/labs/cloud-deploy
 terraform destroy
 
-# 3. Le bucket d'artefacts que Cloud Deploy s'est AUTO-créé (hors state Terraform !)
-#    Repérable à son suffixe _clouddeploy. Contient les sources et les rendus.
-gcloud storage ls | grep clouddeploy
-gcloud storage rm -r gs://<hash>_clouddeploy      # optionnel : quelques Ko, ~0 €
+# 3. Les DEUX buckets que Cloud Deploy s'est AUTO-créés (hors state Terraform !)
+#    a) les SOURCES envoyées par --source=. → gs://<uid-du-pipeline>_clouddeploy
+#       (le hash EST l'uid du delivery pipeline, visible dans terraform destroy)
+#    b) les RENDUS figés → gs://<region>.deploy-artifacts.<project>.appspot.com
+#       (valeur lisible dans execution_configs.artifact_storage du target)
+gcloud storage ls | grep -E "clouddeploy|deploy-artifacts"
+# gcloud storage rm -r gs://<uid>_clouddeploy
+# gcloud storage rm -r gs://europe-west1.deploy-artifacts.kube-train-project.appspot.com
+# → optionnel : quelques Ko, ~0 €. À garder si tu comptes rejouer le lab.
 
 # 4. Vérifier le retour à la baseline : 3 pods / 4 containers, rien de plus
 kubectl get pods -o='custom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name'
@@ -436,9 +441,9 @@ kubectl get pods -o='custom-columns=NAME:.metadata.name,CONTAINERS:.spec.contain
 > Les APIs (`clouddeploy`, `cloudbuild`) restent activées (`disable_on_destroy = false`) —
 > gratuit et sans effet de bord.
 
-> 🎓 **Le pattern à retenir** : trois choses échappent au state Terraform et doivent être
-> nettoyées à la main — les **pods déployés par les rollouts** (d'où le namespace dédié), le
-> **bucket d'artefacts auto-créé** par Cloud Deploy, et les **releases/rollouts** eux-mêmes
+> 🎓 **Le pattern à retenir** : plusieurs choses échappent au state Terraform et doivent être
+> nettoyées à la main — les **pods déployés par les rollouts** (d'où le namespace dédié), les
+> **deux buckets auto-créés** (sources + rendus), et les **releases/rollouts** eux-mêmes
 > (supprimés avec le pipeline). Un service managé qui crée ses propres ressources est un angle
 > mort classique de l'IaC : Terraform ne gère que ce qu'il a créé.
 
