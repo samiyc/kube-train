@@ -8,11 +8,22 @@
 
 ## 🎯 Principe
 
+- **Approche ELI5** : chaque lab part d'une analogie simple, puis mappe vers le vrai vocabulaire
+  GCP. On cherche à *comprendre*, pas à copier des commandes.
 - **Time-boxé** : chaque lab ≤ 1 demi-journée.
 - **Discipline budget** : ≤ 5 €/jour, `terraform destroy` en fin de session, Cloud SQL stoppée.
 - **Priorité aux labs qui exigent le cluster** tant qu'il est UP (il coûte, autant l'amortir).
-- **Livrable par lab** : une note courte `lab-*.md` (objectif → commandes → ce que ça prouve →
-  coût observé → cleanup). Pas de QCM ni d'examen ouvert sur cette phase.
+- **Provisioning en Terraform**, un state jetable par lab (cf. `infra/labs/README.md`).
+
+### Livrables
+
+- **Un `lab-*.md` auto-suffisant par lab** : ELI5 → vocabulaire → ce qu'on construit →
+  Terraform (provisioning) → **exploitation** (`gcloud`) → ce que ça prouve → coût → cleanup.
+- **`qcm-phase0.md`** en fin de phase (+ `corrections/`) pour ancrer tout le vocabulaire GCP acquis.
+
+> **Pas de runbook séparé** : Terraform absorbe le provisioning (workflow identique pour tous les
+> labs → `infra/labs/README.md`), et l'exploitation (`gcloud deploy` &co) vit dans la note du lab
+> concerné. Un runbook transverse ne ferait que dupliquer.
 
 ---
 

@@ -1,0 +1,32 @@
+# Skaffold — le "traducteur" que Cloud Deploy utilise pour transformer une release
+# en manifests concrets par environnement.
+#
+# 🎯 Rôle : Cloud Deploy ne sait pas lire tes YAML tout seul. À chaque release il lance
+# `skaffold render` avec le PROFIL du stage (staging|prod) → produit les manifests figés,
+# puis `skaffold apply` les pousse sur le cluster du target.
+#
+# Le profil est ce qui fait qu'UNE MÊME release donne un résultat différent par environnement
+# (namespace + replicas ici). La release est immuable : on promeut le MÊME artefact.
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: lab-cloud-deploy
+
+# Profil par défaut (jamais utilisé tel quel : chaque stage impose son profil)
+manifests:
+  rawYaml:
+    - staging/*.yaml
+
+deploy:
+  kubectl: {}
+
+profiles:
+  - name: staging
+    manifests:
+      rawYaml:
+        - staging/*.yaml
+
+  - name: prod
+    manifests:
+      rawYaml:
+        - prod/*.yaml

@@ -83,7 +83,11 @@ complete -o default -F __start_kubectl k
 > ⚠️ Ces labs sont **hors périmètre CKAD** (qui reste 100 % local). Ils servent la certif GCP DevOps ultérieure et passent avant J1-J8 uniquement pendant l'essai actif.
 > **Priorité aux labs « Cluster ✅ » tant que le cluster est UP** (il coûte, autant l'amortir).
 
-**Livrables Phase 0** → `phase0-gcp/` : un `lab-*.md` par lab (objectif → commandes → ce que ça prouve → coût observé → cleanup) + `runbook-phase0.md`. Index et ordre : `phase0-gcp/readme.md`. Pas de QCM ni d'examen ouvert sur cette phase.
+**Approche Phase 0 : ELI5** — chaque lab part d'une analogie simple puis mappe vers le vrai vocabulaire GCP. Objectif : *comprendre* les services managés, pas empiler des commandes.
+
+**Livrables Phase 0** → `phase0-gcp/` : un `lab-*.md` **auto-suffisant** par lab (ELI5 → vocabulaire → Terraform → exploitation `gcloud` → preuve → coût → cleanup) + un **`qcm-phase0.md`** en fin de phase pour ancrer le vocabulaire GCP. Index et ordre : `phase0-gcp/readme.md`. Provisioning en Terraform, state jetable par lab : `infra/labs/README.md`.
+
+> Pas de runbook séparé : Terraform absorbe le provisioning (workflow commun documenté une fois), l'exploitation vit dans la note du lab.
 
 ---
 

@@ -1,0 +1,39 @@
+# Namespace dédié au lab → le cleanup se fait d'un seul `kubectl delete ns`,
+# et la baseline du namespace `default` (3 pods / 4 containers) n'est jamais polluée.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lab-cloud-deploy-staging
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab-app
+  namespace: lab-cloud-deploy-staging
+  labels:
+    app: lab-app
+    env: staging
+spec:
+  replicas: 1 # staging = petit
+  selector:
+    matchLabels:
+      app: lab-app
+  template:
+    metadata:
+      labels:
+        app: lab-app
+        env: staging
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+          # Autopilot exige des resources explicites
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
