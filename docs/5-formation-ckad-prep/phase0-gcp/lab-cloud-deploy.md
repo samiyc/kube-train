@@ -82,9 +82,47 @@ terraform apply
 > `terraform apply` dans `infra/` ne le voit pas. `terraform destroy` ici ne casse rien d'autre.
 
 Ce que ça crée : les 2 APIs (`clouddeploy`, `cloudbuild`), le SA d'exécution + ses rôles,
-le binding d'impersonation du service agent, les 2 targets, le pipeline.
+le service agent + son binding d'impersonation, les 2 targets, le pipeline.
 
 **Rien n'est encore déployé sur le cluster** — le tapis est monté, mais vide.
+
+### 🪤 Piège vécu : le service agent qui n'existe pas encore
+
+Premier `apply` → 11 ressources créées, 1 échec :
+
+```
+Error 400: Service account service-399291708401@gcp-sa-clouddeploy.iam.gserviceaccount.com
+           does not exist., badRequest
+```
+
+**Cause** : activer une API ne crée pas son *service agent* immédiatement — GCP le provisionne
+**paresseusement**. Un `depends_on` sur `google_project_service` garantit l'**ordre**, pas
+l'**existence**. Et comme l'email de l'agent était construit à la main
+(`service-${data.google_project.this.number}@gcp-sa-clouddeploy...`), Terraform n'avait **aucune
+dépendance réelle** vers l'objet : il fonçait.
+
+**Le mauvais fix** : relancer `terraform apply` (ça passe, l'agent a eu le temps d'apparaître).
+Ça marche… et ça réintroduit une étape manuelle à chaque projet neuf. Exactement la dette qu'on
+élimine depuis F4.
+
+**Le bon fix** : faire créer l'agent **par une ressource**, et référencer *sa sortie* :
+
+```hcl
+resource "google_project_service_identity" "clouddeploy" {
+  provider   = google-beta          # ressource beta-only
+  service    = "clouddeploy.googleapis.com"
+  depends_on = [google_project_service.clouddeploy]
+}
+
+resource "google_service_account_iam_member" "agent_impersonates_exec_sa" {
+  member = "serviceAccount:${google_project_service_identity.clouddeploy.email}"
+  # ...
+}
+```
+
+> 🎓 **La leçon, généralisable** : en Terraform, une **chaîne construite à la main** ne crée
+> aucune dépendance dans le graphe. Référencer l'**attribut d'une ressource** est ce qui force
+> l'ordre *et* l'existence. `depends_on` ordonne ; une référence garantit.
 
 ---
 
@@ -226,3 +264,7 @@ kubectl get pods -o='custom-columns=NAME:.metadata.name,CONTAINERS:.spec.contain
 - **SA d'exécution** : Cloud Deploy tourne avec une identité dédiée, et son **service agent**
   doit avoir `iam.serviceAccountUser` dessus pour l'endosser.
 - **Rollback** = redéploiement d'un rendu existant → pas de rebuild → quasi instantané.
+- **Terraform** : `depends_on` ordonne, une **référence d'attribut** garantit l'existence.
+  Un email de service agent construit en chaîne = aucune dépendance = race condition.
+- **Service agent ≠ SA d'exécution** : l'agent est l'identité *du service GCP* (créée par
+  Google, `gcp-sa-*`) ; le SA d'exécution est *la tienne*, celle que l'agent endosse pour agir.

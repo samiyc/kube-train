@@ -6,6 +6,12 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 6.0"
     }
+    # Requis uniquement pour google_project_service_identity (ressource beta-only)
+    # qui force la création du service agent Cloud Deploy. Voir main.tf.
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 6.0"
+    }
   }
 
   # State JETABLE, isolé de infra/ et de bootstrap/.

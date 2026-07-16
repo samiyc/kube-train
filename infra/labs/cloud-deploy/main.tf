@@ -31,15 +31,31 @@ resource "google_project_iam_member" "deploy_sa" {
   member  = "serviceAccount:${google_service_account.deploy.email}"
 }
 
-# Le SERVICE AGENT de Cloud Deploy doit pouvoir « endosser » le SA d'exécution ci-dessus.
+# ── Service agent de Cloud Deploy ─────────────────────────────────────────────
+# ⚠️ Piège vécu (15/07) : activer l'API ne crée PAS le service agent tout de suite —
+# GCP le provisionne paresseusement. Un simple `depends_on` sur l'API garantit l'ORDRE,
+# pas l'EXISTENCE → le binding IAM échouait avec :
+#   Error 400: Service account service-<num>@gcp-sa-clouddeploy.iam.gserviceaccount.com
+#              does not exist.
+#
+# Fix déterministe : cette ressource appelle explicitement services.generateServiceIdentity.
+# L'agent devient une ressource du graphe → son email est une sortie, donc Terraform ne peut
+# plus créer le binding avant que l'agent existe réellement. Fini le "relancer l'apply".
+resource "google_project_service_identity" "clouddeploy" {
+  provider = google-beta
+  project  = var.project_id
+  service  = "clouddeploy.googleapis.com"
+
+  depends_on = [google_project_service.clouddeploy]
+}
+
+# Le service agent doit pouvoir « endosser » le SA d'exécution.
 # Sans ce binding : "failed to impersonate service account" au premier rollout.
-# L'agent est créé automatiquement à l'activation de l'API → d'où le depends_on.
 resource "google_service_account_iam_member" "agent_impersonates_exec_sa" {
   service_account_id = google_service_account.deploy.name
   role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:service-${data.google_project.this.number}@gcp-sa-clouddeploy.iam.gserviceaccount.com"
-
-  depends_on = [google_project_service.clouddeploy]
+  # Référence la ressource (pas une chaîne construite) → dépendance explicite.
+  member = "serviceAccount:${google_project_service_identity.clouddeploy.email}"
 }
 
 # ── Targets = les destinations ────────────────────────────────────────────────
