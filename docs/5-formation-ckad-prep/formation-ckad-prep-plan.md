@@ -70,18 +70,20 @@ complete -o default -F __start_kubectl k
 
 **Objectif** : maximiser la valeur de l'essai GCP restant (~100 €) avant de basculer sur les drills CKAD locaux. Phase prioritaire, pré-CKAD, time-boxée : chaque lab ≤ 1 demi-journée, `terraform destroy` en fin de session.
 
-| Feature | Valeur (certif/mission) | Effort |
-|---------|-------------------------|--------|
-| **Cloud Deploy** (delivery pipeline managé) | GCP DevOps Engineer — progressive delivery managée | Moyen |
-| **Cloud Build triggers** (build sur push) | Alternative managée à GitHub Actions | Faible |
-| **Binary Authorization** (attestation d'images) | Supply chain security, aligne avec Gatekeeper F4 | Moyen |
-| **GKE Cost insights / Recommender** | FinOps, optimisation coût | Faible |
-| **Cloud Trace + Profiler** | Complète l'OTel de F4, observabilité prod | Faible |
-| **Gemini Cloud Assist** | Productivité ops, sujet 2026 GCP Developer | Faible |
+| # | Feature | Valeur (certif/mission) | Cluster | Effort |
+|---|---------|-------------------------|:---:|--------|
+| 1 | **Cloud Deploy** (delivery pipeline managé) | GCP DevOps Engineer — progressive delivery managée. Plus gros ROI certif. | ✅ | Moyen |
+| 2 | **Binary Authorization** (attestation d'images) | Supply chain security, prolonge Gatekeeper F4 | ✅ | Moyen |
+| 3 | **Cloud Trace + Profiler** | Capitalise sur la trace E2E livrée en F4 | ✅ | Faible |
+| 4 | **SLO / alerte / dashboard as-code** | Passe les SLO F4-J5 (REST) en Terraform → reproductibles. Comble la dernière dette F4. | ✅ | Moyen |
+| 5 | **GKE Cost insights / Recommender** | FinOps, optimisation coût | ✅ | Faible |
+| 6 | **Gemini Cloud Assist** | Productivité ops, sujet 2026 GCP Developer | ➖ | Faible |
+| 7 | **Cloud Build triggers** (build sur push) | Alternative managée à GitHub Actions — valeur marginale faible (GH Actions déjà maîtrisé) | ➖ | Faible |
 
 > ⚠️ Ces labs sont **hors périmètre CKAD** (qui reste 100 % local). Ils servent la certif GCP DevOps ultérieure et passent avant J1-J8 uniquement pendant l'essai actif.
+> **Priorité aux labs « Cluster ✅ » tant que le cluster est UP** (il coûte, autant l'amortir).
 
-**Livrables Phase 0** : notes courtes par lab + section runbook dédiée (commandes, cleanup, coût observé). Pas d'examen ouvert CKAD sur cette phase.
+**Livrables Phase 0** → `phase0-gcp/` : un `lab-*.md` par lab (objectif → commandes → ce que ça prouve → coût observé → cleanup) + `runbook-phase0.md`. Index et ordre : `phase0-gcp/readme.md`. Pas de QCM ni d'examen ouvert sur cette phase.
 
 ---
 
