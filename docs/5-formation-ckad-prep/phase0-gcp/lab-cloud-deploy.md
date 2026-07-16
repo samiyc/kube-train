@@ -199,41 +199,221 @@ gcloud deploy targets rollback lab-clouddeploy-prod \
   --delivery-pipeline=$PIPELINE --region=$REGION --release=rel-001
 ```
 
+> ⚠️ **Surprise observée** : le rollback part lui aussi en `PENDING_APPROVAL` ! Voir §7.2.
+
 > Le rollback **ne re-build rien** : il redéploie un artefact déjà rendu. D'où sa rapidité.
 > C'est l'argument massue de Cloud Deploy vs un `kubectl apply` maison.
 
-### 5.5 La vue console (le tapis en image)
+### 5.5 Voir ce qui tourne, sans jsonpath
 
 ```bash
-terraform output console_url    # depuis infra/labs/cloud-deploy/
+# -L ajoute un label en colonne — bien plus lisible qu'un jsonpath à échapper
+kubectl get pods -n lab-cloud-deploy-prod -L deploy.cloud.google.com/release-id
+```
+```
+NAME                      READY   STATUS    AGE     RELEASE-ID
+lab-app-6cc58d746-c6f8p   1/1     Running   6m59s   rel-001
+```
+
+> Pont livraison ↔ observabilité **gratuit** : en incident, tu sais en une commande quelle
+> release tourne réellement en prod.
+
+---
+
+## 6. Où regarder dans la console GCP
+
+> La console est **verbeuse et intimidante**. Voici les 4 seules pages qui comptent pour ce lab,
+> et quoi y regarder.
+
+### 🥇 La vue du pipeline — le tapis roulant en image
+
+**[console.cloud.google.com/deploy/delivery-pipelines/europe-west1/lab-clouddeploy-pipeline](https://console.cloud.google.com/deploy/delivery-pipelines/europe-west1/lab-clouddeploy-pipeline?project=kube-train-project)**
+*(ou `terraform output console_url` depuis `infra/labs/cloud-deploy/`)*
+
+C'est **LA** page à garder ouverte. Le schéma du haut dit tout d'un coup d'œil :
+
+| Élément | Ce que ça veut dire |
+|---|---|
+| Les 2 encadrés (staging / prod) | Les **targets**, avec la release actuellement dessus + son âge |
+| La pastille centrale `0 en attente` / `1 en attente` | Les **approbations** en attente. Jaune + lien *Examiner* = une porte est fermée. |
+| Lien **Promouvoir** sous staging | Fait avancer le gâteau au poste suivant |
+| Bandeau **Déploiements / Fréquence / Taux d'échec** | Les **métriques DORA**, calculées nativement (voir §7.4) |
+| Onglet **Versions** | Toutes les releases + l'état de leur dernier déploiement |
+| Onglet **Automatisations** | Règles d'auto-promotion / auto-rollback (non utilisées ici, cf. §7.2) |
+
+### Les 3 autres, ponctuellement
+
+| Page | Quand |
+|---|---|
+| [**GKE › Charges de travail**](https://console.cloud.google.com/kubernetes/workload/overview?project=kube-train-project) — filtrer sur l'espace de noms `lab-cloud-deploy-*` | Voir `1/1` (staging) vs `2/2` (prod) côte à côte : la thèse du lab en une ligne |
+| [**Cloud Build › Historique**](https://console.cloud.google.com/cloud-build/builds?project=kube-train-project) | Logs des jobs render/deploy quand un rollout échoue |
+| [**Cloud Deploy › Cibles**](https://console.cloud.google.com/deploy/delivery-pipelines?project=kube-train-project) | Vérifier qu'un target a bien `require_approval` |
+
+---
+
+## 7. Résultats réels observés (16/07/2026)
+
+### 7.1 Le rendu se fait à la CRÉATION de la release, pas à la promotion
+
+```bash
+gcloud deploy releases describe rel-001 --delivery-pipeline=$PIPELINE --region=$REGION \
+  --format="yaml(targetRenders)"
+```
+```yaml
+targetRenders:
+  lab-clouddeploy-prod:     renderingBuild: .../builds/1e281d57-...   renderingState: SUCCEEDED
+  lab-clouddeploy-staging:  renderingBuild: .../builds/8af20c8b-...   renderingState: SUCCEEDED
+```
+
+**Deux builds de rendu distincts, déjà `SUCCEEDED`** — alors que la promotion vers prod n'avait
+pas encore eu lieu. Dès le `releases create`, Cloud Deploy rend les manifests **pour tous les
+targets d'un coup**, et les **fige**.
+
+C'est la clé qui explique tout le reste :
+- **Promouvoir ne rend rien, ne build rien** → applique un YAML déjà figé → instantané.
+- **Le rollback est instantané** pour la même raison : le rendu de rel-001 dort dans le bucket.
+- **L'immuabilité est structurelle** : le manifest prod a été produit au même instant, depuis la
+  même source, que celui de staging. Aucun `git push` intermédiaire ne peut polluer la prod.
+
+### 7.2 Le rollback est soumis à la MÊME porte d'approbation
+
+```
+Creating rollout .../releases/rel-001/rollouts/rel-001-to-lab-clouddeploy-prod-0002
+The rollout is pending approval.
+```
+
+Un rollback n'est pas une commande magique : c'est **un nouveau rollout** de rel-001 vers prod
+(suffixe `-0002` = 2ᵉ rollout de cette release sur cette cible). Il hérite donc du
+`require_approval` du target.
+
+**Le compromis, et c'est une vraie question d'archi** :
+- ✅ Personne ne revient en arrière en douce sur la prod — tracé, approuvé, auditable.
+- ⚠️ À 3 h du matin en incident, ton rollback est **bloqué**. Si l'astreinte n'a pas le droit
+  d'approuver, tu as fabriqué un MTTR catastrophique.
+
+→ En vrai : donner le rôle d'approbateur à l'astreinte, ou utiliser les **automation rules**
+(onglet *Automatisations*) pour auto-approuver les rollbacks.
+
+### 7.3 Les labels injectés expliquent le rolling update à image identique
+
+```
+app.kubernetes.io/managed-by=google-cloud-deploy
+deploy.cloud.google.com/release-id=rel-002        ← change entre rel-001 et rel-002
+deploy.cloud.google.com/target-id=lab-clouddeploy-prod
+skaffold.dev/run-id=17d5a41c305c4769ab1f719630639149
+pod-template-hash=588f6dc8fb
+```
+
+rel-002 a été créée **sans modifier les manifests** — pourtant les pods ont été remplacés
+(`6cc58d746` → `588f6dc8fb`). Cause : Cloud Deploy injecte `release-id` et `skaffold.dev/run-id`
+**dans le pod template**. Le template change → nouveau `pod-template-hash` → nouveau ReplicaSet
+→ rolling update, **à image strictement identique**.
+
+Après rollback, le hash **revient à `6cc58d746`** et `release-id=rel-001`. Preuve visuelle nette.
+
+### 7.4 Les métriques DORA sont natives
+
+Le bandeau console affiche *Déploiements*, *Fréquence de déploiement*, *Taux d'échec* — **sans
+aucune instrumentation**. Sujet direct de la certif GCP DevOps Engineer.
+
+**Observé** : le compteur est passé de **2 → 3** après le rollback. **Un rollback compte comme un
+déploiement** (conforme à DORA : *deployment frequency* mesure les mises en prod, pas les
+nouveautés). Corollaire : un rollback n'améliore pas le *change failure rate*, il le dégrade —
+d'où la nécessité de lire les 4 métriques **ensemble** (fréquence haute + échec bas = maturité ;
+fréquence haute + rollbacks fréquents = fuite en avant).
+
+---
+
+## 8. Ce que ça prouve — ✅ validé le 16/07/2026
+
+- [x] Release déployée **automatiquement** sur le 1er stage → `rel-001-to-...-staging-0001 SUCCEEDED`, 1 pod
+- [x] Promotion **bloquée** en `PENDING_APPROVAL` → et le namespace `lab-cloud-deploy-prod` **n'existait même pas** : la porte bloque l'application de *tous* les manifests, Namespace compris
+- [x] Après approbation : **2 replicas** en prod vs **1** en staging, même release → *même artefact, config différente*
+- [x] **Rollback** vers rel-001 sans rebuild → hash `6cc58d746` + `release-id=rel-001` revenus
+- [x] `serial_pipeline` impose l'ordre → impossible de sauter staging
+- [x] Baseline `default` **jamais polluée** : 3 pods / 4 containers pendant tout le lab
+
+---
+
+## 9. Coût observé
+
+| Ressource | Coût réel |
+|---|---|
+| Cloud Deploy (pipeline, targets, releases) | **Gratuit** — facturation aux jobs d'exécution seulement |
+| Cloud Build (2 rendus/release + 1 deploy/rollout) | ~1-2 min par job → **dans le free tier** (120 min/jour) |
+| Pods du lab (1 + 2 nginx, ~150m CPU) | Marginal sur Autopilot, quelques centimes/heure |
+| Bucket d'artefacts `*_clouddeploy` | Quelques Ko → **≈ 0 €** |
+| **Total lab** | **≈ 0 €** — le cluster, lui, tournait déjà |
+
+---
+
+## 10. Blocages rencontrés — et comment on les a corrigés
+
+> Le vrai apprentissage est souvent là. Chaque blocage ci-dessous a été vécu pendant ce lab.
+
+### 🪤 B1 — `Service account service-<num>@gcp-sa-clouddeploy... does not exist`
+
+**Symptôme** : 1er `terraform apply` → **11/12 ressources créées**, échec sur le binding IAM.
+
+**Cause** : activer une API ne crée pas son *service agent* immédiatement (provisioning
+**paresseux**). Mon `depends_on` garantissait l'**ordre**, pas l'**existence** — et l'email de
+l'agent était une **chaîne construite à la main**, donc *aucune dépendance* dans le graphe.
+
+**Mauvais fix** : relancer `terraform apply` (ça passe… et ça réintroduit une étape manuelle sur
+tout projet neuf).
+**Bon fix** : `google_project_service_identity` (provider `google-beta`) crée l'agent, et le
+binding référence son `.email` → dépendance réelle, déterministe. Détail complet en §4.
+
+> 🎓 **Leçon généralisable** : en Terraform, `depends_on` **ordonne** ; une **référence
+> d'attribut** garantit l'existence. Une chaîne construite ne crée aucun lien.
+
+### 🪤 B2 — `Failed to find attribute [region]` sur les commandes gcloud deploy
+
+**Symptôme** : `gcloud deploy releases promote` → *The [release] resource is not properly
+specified. Failed to find attribute [region]*.
+
+**Cause** : rien à voir avec Cloud Deploy — les variables `$PIPELINE` / `$REGION` n'étaient pas
+exportées dans ce shell (le `releases create` avait été lancé avec les valeurs **en dur**).
+`--region=` arrivait donc **vide**.
+
+**Fix** :
+```bash
+export REGION=europe-west1
+export PIPELINE=lab-clouddeploy-pipeline
+# ou, mieux, une fois pour toutes :
+gcloud config set deploy/region europe-west1
+```
+> L'erreur le suggérait elle-même (`set the property deploy/region`) — **lire les messages
+> d'erreur en entier**, ils contiennent souvent le remède.
+
+### 🪤 B3 — La console dit `rel-001`, kubectl dit `rel-002`
+
+**Symptôme** : après l'`approve` du rollback, la console affiche prod = rel-001 « À l'instant »,
+mais `kubectl get pods` montre encore les pods rel-002 (AGE 24m).
+
+**Cause** : **timing**. `gcloud deploy rollouts approve` rend la main *immédiatement* — il ne fait
+que lever la barrière. Le job de déploiement (Cloud Build) démarre ensuite et prend ~30-60 s.
+
+**Fix** : attendre et re-vérifier. Ce n'était pas une incohérence mais deux photos à des instants
+différents.
+> 🎓 En asynchrone, « la commande a rendu la main » ≠ « l'effet est visible ». Toujours vérifier
+> l'**état final** (`rollouts list`, ou le label `release-id` sur les pods).
+
+### 🪤 B4 — jsonpath vide sur un label à points et slash
+
+**Symptôme** : `-o jsonpath='{.items[*].metadata.labels.deploy\.cloud\.google\.com/release-id}'`
+→ sortie **vide**, sans erreur.
+
+**Cause** : l'échappement d'une clé contenant à la fois des `.` et un `/` est piégeux.
+
+**Fix** — utiliser `-L`, bien plus lisible :
+```bash
+kubectl get pods -n lab-cloud-deploy-prod -L deploy.cloud.google.com/release-id
 ```
 
 ---
 
-## 6. Ce que ça prouve
-
-- [ ] Une release déployée **automatiquement** sur le 1er stage (staging)
-- [ ] Une promotion **bloquée** en `PENDING_APPROVAL` (la porte prod fonctionne)
-- [ ] Après approbation : **2 replicas** en prod vs 1 en staging → *même artefact, config différente*
-- [ ] Un **rollback** vers `rel-001` sans rebuild
-- [ ] Impossible de sauter staging → le `serial_pipeline` impose l'ordre
-
----
-
-## 7. Coût observé
-
-| Ressource | Coût |
-|---|---|
-| Cloud Deploy (pipeline, targets) | **Gratuit** (facturation aux jobs d'exécution) |
-| Cloud Build (jobs render/deploy) | ~1-2 min/rollout — largement dans le free tier |
-| Pods du lab (1 + 2 nginx, ~150m CPU total) | Marginal sur Autopilot |
-| **Total lab** | **≈ 0 €** (le cluster, lui, tourne déjà) |
-
-→ *(à confirmer après le run — noter ici le réel)*
-
----
-
-## 8. Cleanup — retour à la baseline
+## 11. Cleanup — retour à la baseline
 
 ```bash
 # 1. Les workloads déployés par le pipeline ne sont PAS dans le state Terraform
@@ -264,7 +444,7 @@ kubectl get pods -o='custom-columns=NAME:.metadata.name,CONTAINERS:.spec.contain
 
 ---
 
-## 9. À retenir (matière à QCM)
+## 12. À retenir (matière à QCM)
 
 - **CD ≠ CI** : Cloud Deploy ne build pas, il **promeut un artefact déjà construit**.
 - **Release = immuable** : c'est la garantie que prod == ce qui a été testé.
@@ -279,3 +459,14 @@ kubectl get pods -o='custom-columns=NAME:.metadata.name,CONTAINERS:.spec.contain
   Un email de service agent construit en chaîne = aucune dépendance = race condition.
 - **Service agent ≠ SA d'exécution** : l'agent est l'identité *du service GCP* (créée par
   Google, `gcp-sa-*`) ; le SA d'exécution est *la tienne*, celle que l'agent endosse pour agir.
+- **Le rendu a lieu à la création de la release**, pour **tous les targets d'un coup**, et il est
+  **figé**. C'est *la* raison pour laquelle promote et rollback sont instantanés et sûrs.
+- **Le rollback est un rollout comme un autre** → soumis à `require_approval`. Compromis
+  auditabilité vs MTTR : à arbitrer via les rôles d'astreinte ou les automation rules.
+- **Cloud Deploy injecte des labels** (`release-id`, `target-id`, `skaffold.dev/run-id`) dans le
+  pod template → rolling update même à image identique, et pont livraison↔observabilité gratuit.
+- **DORA natif** : fréquence de déploiement + taux d'échec sans instrumentation. **Un rollback
+  compte comme un déploiement** et dégrade le change failure rate — les 4 métriques se lisent
+  ensemble.
+- **Angle mort de l'IaC** : un service managé crée ses propres ressources (pods des rollouts,
+  bucket d'artefacts) → hors state Terraform → cleanup manuel (d'où le namespace dédié).
