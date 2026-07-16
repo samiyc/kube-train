@@ -5,6 +5,14 @@ WORKDIR /app
 # curl --fail : échoue proprement si le download rate (ADD silencieux sur redirect multi-hop)
 RUN curl -L --fail -o /app/opentelemetry-javaagent.jar \
     https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.26.1/opentelemetry-javaagent.jar
+# Agent Cloud Profiler (lab Phase 0 F5) — même philosophie que l'agent OTel :
+# embarqué au build, mais ACTIVÉ seulement par -agentpath dans JAVA_TOOL_OPTIONS
+# (deployment-gke.yaml). Retirer la variable d'env le désactive sans rebuild.
+RUN curl -L --fail -o /tmp/profiler_java_agent.tar.gz \
+      https://storage.googleapis.com/cloud-profiler/java/latest/profiler_java_agent.tar.gz \
+ && mkdir -p /opt/cprof \
+ && tar -xzf /tmp/profiler_java_agent.tar.gz -C /opt/cprof \
+ && rm /tmp/profiler_java_agent.tar.gz
 COPY pom.xml .
 COPY src ./src
 RUN mvn clean package -DskipTests
@@ -19,6 +27,8 @@ WORKDIR /app
 # Équivalent d'un `apt-get upgrade` sur le serveur → corrige openssl, curl, etc.
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/opentelemetry-javaagent.jar opentelemetry-javaagent.jar
+# Binaire natif de l'agent Profiler (lab Phase 0 F5). Lu seul (read-only FS OK).
+COPY --from=build /opt/cprof /opt/cprof
 COPY --from=build /app/target/kube-train-api-0.0.1-SNAPSHOT.jar app.jar
 EXPOSE 8080
 # -javaagent toujours actif. Pour désactiver sans reconstruire : OTEL_TRACES_EXPORTER=none

@@ -151,8 +151,16 @@ spec:
         - name: OTEL_LOGS_EXPORTER
           value: "none"
         # F4-J1 : /tmp writable pour Spring Boot (readOnlyRootFilesystem: true)
+        #
+        # LAB Phase 0 F5 — Cloud Profiler : -agentpath active l'agent natif embarqué
+        # dans l'image (cf. Dockerfile). Auth via Workload Identity (ADC), rôle
+        # cloudprofiler.agent accordé par infra/labs/profiler/.
+        #   -cprof_service          → nom sous lequel les profils apparaissent en console
+        #   -cprof_service_version  → permet de comparer les profils entre 2 versions
+        #   -logtostderr            → logs de l'agent dans kubectl logs (preuve qu'il tourne)
+        # ⚠️ RETIRER cette partie après le lab (désactive le Profiler sans rebuild).
         - name: JAVA_TOOL_OPTIONS
-          value: "-Djava.io.tmpdir=/tmp"
+          value: "-Djava.io.tmpdir=/tmp -agentpath:/opt/cprof/profiler_java_agent.so=-cprof_service=kube-train-api,-cprof_service_version=1.0.0,-logtostderr"
 
       # Sidecar Cloud SQL Auth Proxy
       # Intercepte les connexions JDBC sur 127.0.0.1:5432 et les route de façon sécurisée vers Cloud SQL.

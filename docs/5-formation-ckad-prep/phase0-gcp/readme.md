@@ -31,9 +31,9 @@
 
 | # | Lab | Pourquoi | Cluster requis | Effort | Statut |
 |---|-----|----------|:---:|--------|--------|
-| 1 | **Cloud Deploy** | Service signature du GCP DevOps Engineer : delivery pipeline managé, promotion dev→prod, rollback. Le plus gros ROI certif. | ✅ | Moyen | ⬜ |
-| 2 | **Binary Authorization** | Supply chain security : n'autoriser que des images attestées. Prolonge Gatekeeper (F4-J5). | ✅ | Moyen | ⬜ |
-| 3 | **Cloud Trace + Profiler** | Capitalise sur la trace E2E fraîchement livrée (F4). Quick win. | ✅ | Faible | ⬜ |
+| 1 | **Cloud Deploy** | Service signature du GCP DevOps Engineer : delivery pipeline managé, promotion dev→prod, rollback. Le plus gros ROI certif. | ✅ | Moyen | ✅ **Fait 16/07** — [note](lab-cloud-deploy.md) |
+| 2 | **Binary Authorization** | Supply chain security : n'autoriser que des images attestées. Prolonge Gatekeeper (F4-J5). ⚠️ S'active au niveau **cluster** → arbitrage d'isolation à trancher. | ✅ | Moyen | ⬜ |
+| 3 | **Cloud Profiler** | Le complément manquant de l'observabilité (Trace déjà acquis en F4). Touche l'app (agent in-process). | ✅ | Faible | 🚧 [note](lab-cloud-profiler.md) |
 | 4 | **SLO / alerte / dashboard as-code** | Passe les SLO F4-J5 (créés en REST) en Terraform → reproductibles. Comble la dernière dette F4. | ✅ | Moyen | ⬜ |
 | 5 | **GKE Cost insights / Recommender** | FinOps : lire la conso, dimensionner. Rapide. | ✅ | Faible | ⬜ |
 | 6 | **Gemini Cloud Assist** | Productivité ops, sujet 2026 du GCP Developer. | ➖ | Faible | ⬜ |
