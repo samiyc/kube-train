@@ -244,12 +244,23 @@ kubectl delete namespace lab-cloud-deploy-staging lab-cloud-deploy-prod --ignore
 cd /mnt/c/DEVDIR/GITHUB/kube-train/infra/labs/cloud-deploy
 terraform destroy
 
-# 3. Vérifier le retour à la baseline : 3 pods / 4 containers, rien de plus
+# 3. Le bucket d'artefacts que Cloud Deploy s'est AUTO-créé (hors state Terraform !)
+#    Repérable à son suffixe _clouddeploy. Contient les sources et les rendus.
+gcloud storage ls | grep clouddeploy
+gcloud storage rm -r gs://<hash>_clouddeploy      # optionnel : quelques Ko, ~0 €
+
+# 4. Vérifier le retour à la baseline : 3 pods / 4 containers, rien de plus
 kubectl get pods -o='custom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name'
 ```
 
 > Les APIs (`clouddeploy`, `cloudbuild`) restent activées (`disable_on_destroy = false`) —
 > gratuit et sans effet de bord.
+
+> 🎓 **Le pattern à retenir** : trois choses échappent au state Terraform et doivent être
+> nettoyées à la main — les **pods déployés par les rollouts** (d'où le namespace dédié), le
+> **bucket d'artefacts auto-créé** par Cloud Deploy, et les **releases/rollouts** eux-mêmes
+> (supprimés avec le pipeline). Un service managé qui crée ses propres ressources est un angle
+> mort classique de l'IaC : Terraform ne gère que ce qu'il a créé.
 
 ---
 
