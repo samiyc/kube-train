@@ -171,16 +171,84 @@ done
 
 ## 8. Ce que ça prouve
 
-- [ ] L'agent démarre et pousse des profils (logs + console)
-- [ ] Un flame graph **CPU time** de `kube-train-api` s'affiche
-- [ ] On identifie au moins **une méthode `com.kubetrain.*`** dans le profil
-- [ ] On répond à l'hypothèse : **l'OutboxPoller coûte-t-il quelque chose ?**
-- [ ] Le profil **Heap** est disponible
-- [ ] La baseline reste saine : 3 pods / 4 containers, app fonctionnelle
+- [x] L'agent démarre et pousse des profils (logs `Creating a new profile` + console)
+- [x] Un flame graph **CPU time** de `kube-train-api` s'affiche
+- [x] On identifie au moins **une méthode `com.kubetrain.*`** dans le profil → `OutboxPoller.processPendingEvents`
+- [x] On répond à l'hypothèse : **l'OutboxPoller coûte-t-il quelque chose ?** → oui, ~1,5-2,1 % CPU, #1 du code métier (cf. § 9)
+- [ ] Le profil **Heap** est disponible *(reste à faire — hypothèse n°4)*
+- [x] La baseline reste saine : app fonctionnelle (2000/2000 POST → 201)
+
+> **⏳ Reste à faire (demain, inter-mission)** — 5 tests, ~7 min, 0 €, par ROI décroissant :
+> 1. **Profil Heap** (Type de profil → *Tas*) → dernier `[ ]` ci-dessus. Qui alloue sur `/trains` + les 2000 events ? (Hibernate + Jackson attendus)
+> 2. **Resserrer la fenêtre à ~5 min** (CPU) → prouver que l'arbre protobuf `<clinit>` **fond** (confirme l'écart n°2 one-shot).
+> 3. **Filtre `createReservation`** (CPU) → confirmer visuellement que le POST est minuscule (preuve du pattern Outbox).
+> 4. **Wall filtré `OutboxPoller`** → voir le `future.get(10s)` d'attente Pub/Sub (le vrai coût du poller = attente I/O, pas CPU).
+> 5. **« Comparer à » → période précédente** → exercer la détection de régression **sans rebuild** (2 fenêtres). ⚠️ Ne PAS bumper `service_version` (rebuild 6 min inutile).
+>
+> Puis : passer le statut du lab en ✅ dans [`readme.md`](readme.md) (ligne 36, 🚧 → ✅).
 
 ---
 
-## 9. Coût
+## 9. Résultats réels & écarts vs attendu (run E2E — 21/07)
+
+**Charge injectée** : 2000 `POST /reservations` en **4 boucles parallèles** (`( … ) & … wait`),
+codes HTTP comptés → **2000/2000 → `201`** (`sort | uniq -c`).
+
+### Ce qu'on a mesuré (Temps CPU, filtre `kubetrain`)
+
+`OutboxPoller.processPendingEvents` = **la barre `com.kubetrain.*` la plus large** :
+**17-21 ms (1,5-2,1 %)** selon la fenêtre. Hypothèse n°1 tranchée : **oui, le poller coûte
+quelque chose, et c'est le premier poste de ton code.**
+
+### Écart n°1 — le POST ne domine PAS (c'est le pattern Outbox)
+
+Attendu : voir `createReservation` grossir avec la charge. Réel : il est **quasi absent**.
+
+Le code l'explique — `POST /reservations` écrit juste une ligne dans `outbox_events` (cheap) et
+rend la main. Tout le coût (désérialiser le payload, re-sérialiser pour Pub/Sub, publier, logger)
+est porté par `OutboxPoller` **en tâche de fond**. **Le profiler prouve visuellement la
+distribution de coût du pattern Outbox** : le chemin requête reste pauvre, le poller encaisse.
+
+### Décomposition réelle du coût `OutboxPoller` (confirmée dans le code)
+
+| Branche flame graph | Ligne de code | Nature |
+|---|---|---|
+| `ObjectMapper.readValue → BeanDeserializer` | `objectMapper.readValue(payload, ReservationEvent.class)` (`processEvent`) | Jackson **désérialise** l'event stocké — hypothèse n°2 ✓, steady-state |
+| `Publisher.publish → JsonWriter` | `objectMapper.writeValueAsString(event)` (`publish`) | Jackson **re-sérialise** pour Pub/Sub |
+| `Logger.info → callAppenders → JsonWriter` | **2× `log.info` par event** (`processEvent` + `publish`), en JSON structuré | 2000 events → **~4000 sérialisations de logs** |
+| `findByStatusOrderByCreatedAtAsc → Hibernate → PgPreparedStatement` | la requête de poll + le `save()` UPDATE | JDBC Postgres |
+| `PubsubMessage.Builder + DescriptorProtos.<clinit>` | `PubsubMessage.newBuilder()…` | protobuf (voir écart n°2) |
+
+> 💡 Poste inattendu : **le logging**. Deux `log.info` JSON par event publié = un coût CPU réel et
+> évitable (passer en `debug`, ou logger par batch). En mission, c'est typiquement le « coût
+> gratuit » qu'un profil révèle.
+
+### Écart n°2 — le piège `<clinit>` (coût one-shot)
+
+L'arbre `com.google.protobuf.DescriptorProtos.<clinit>` / `PubsubProto.<clinit>` reste visible même
+au 2ᵉ run. Ce sont des **initialisations de classe = une seule fois** (1er publish). Elles ne
+fondent **pas** ici car la **fenêtre est restée à 30 min** → elle englobe encore le 1er publish.
+Leçon : **resserrer la Période** pour isoler le steady-state (le `<clinit>` disparaît alors).
+
+### Écart n°3 — Wall time ≠ CPU (et le cold-start à ~38 s)
+
+En basculant Type de profil sur **Durée d'exécution (Wall)**, c'est **le bootstrap Spring**
+(`SpringApplication.run → preInstantiateSingletons → …`) qui écrase tout — soit les **~38 s de
+cold-start** qui justifient le `startupProbe` (cf. CLAUDE.md). Deux raisons : (1) un pod frais
+(`…-rpbkf`) a démarré dans la fenêtre ; (2) **Wall compte l'élapsed** (attente + démarrage), pas
+les cycles brûlés. Idem pour `future.get(10s)` du publisher : l'attente du round-trip Pub/Sub est
+**invisible en CPU, visible en Wall**.
+
+### La vraie leçon
+
+Même sous 2000 réservations, l'app brûle **~1,5 % de CPU**. `kube-train-api` est **I/O-bound**
+(Postgres, Pub/Sub), pas CPU-bound. **C'est pour ça que le flame graph CPU montre si peu de code
+métier** — et savoir lire ça (« ne cherche pas à optimiser le CPU d'un service qui attend »)
+est l'apprentissage central du lab.
+
+---
+
+## 10. Coût
 
 | Ressource | Coût |
 |---|---|
@@ -188,17 +256,30 @@ done
 | Surcoût CPU de l'agent | ~négligeable (échantillonnage statistique, conçu pour la prod) |
 | **Total lab** | **0 €** |
 
-→ *(à confirmer après le run)*
+→ **Confirmé après le run** : aucune ligne Profiler sur la facture, l'agent n'a pas bougé les
+ressources du pod (`kube-train-deployment` resté `2/2 Running`).
 
 ---
 
-## 10. Blocages rencontrés
+## 11. Blocages rencontrés
 
-*(à remplir pendant le lab)*
+- **Swagger : mauvais chemin.** `http://<LB>/swagger/index.html` → 404 (catch-all « Route
+  inconnue »). springdoc expose par défaut **`/swagger-ui/index.html`** (UI) et **`/v3/api-docs`**
+  (JSON) — les deux **répondent 200 sur GKE** (l'UI n'est pas désactivée en profil `gcp`).
+- **`curl -s … > /dev/null` masque le code HTTP** → faux doute « les POST ont-ils échoué ? ».
+  Toujours ajouter `-w "%{http_code}\n"` pour compter les statuts (`sort | uniq -c` → `2000 201`).
+- **curl séquentiel = charge trop faible.** En série, le CPU respire entre chaque requête → le
+  chemin réservation ne ressort pas. Il faut **4 boucles parallèles** (`( … ) &` puis `wait`).
+- **Fenêtre profiler non resserrée.** Garder « 30 minutes » mélange le cold-start Spring + le
+  `<clinit>` protobuf (one-shot) avec le steady-state → le profil semble plus lourd qu'en régime.
+- **Deux pods, `kubectl logs` en cible un seul.** « Found 2 pods, using pod/… » → les logs affichés
+  ne couvrent qu'un réplica ; le profil console, lui, agrège les deux.
+- **(Windows only) Git Bash convertit les chemins.** Un `-w "/swagger-ui…"` commençant par `/` est
+  réécrit en chemin Windows → `export MSYS_NO_PATHCONV=1`. Sans objet depuis WSL.
 
 ---
 
-## 11. Cleanup — retour à la baseline
+## 12. Cleanup — retour à la baseline
 
 Ce lab a **deux** niveaux à défaire :
 
@@ -225,7 +306,7 @@ kubectl logs deployment/kube-train-deployment -c api-container | grep -ci cprof 
 
 ---
 
-## 12. À retenir (matière à QCM)
+## 13. À retenir (matière à QCM)
 
 - **Trace ≠ Profiler** : Trace = *où* le temps passe entre services (une requête) ; Profiler =
   *quel code* brûle CPU/mémoire (agrégat continu). Complémentaires, pas concurrents.
@@ -241,3 +322,14 @@ kubectl logs deployment/kube-train-deployment -c api-container | grep -ci cprof 
   Pub/Sub et l'OTel Collector. Un seul modèle d'identité pour tout GCP.
 - **Cloud Profiler est gratuit** et conçu pour tourner **en production continue** — contrairement
   à un profiler de dev (JProfiler, VisualVM) qu'on branche ponctuellement.
+- **CPU vs Wall** : CPU = cycles *brûlés* (Jackson, Hibernate) ; Wall = temps *écoulé*, attente et
+  démarrage inclus (round-trip Pub/Sub, cold-start Spring). Une même méthode a deux poids
+  radicalement différents selon la métrique. Choisir la métrique **avant** de conclure.
+- **Le pattern Outbox déplace le coût hors du chemin requête** : `POST /reservations` reste pauvre
+  en CPU (écrit une ligne), le poller de fond porte la sérialisation + la publication. Un profil
+  CPU le rend visible d'un coup d'œil.
+- **Piège `<clinit>`** : les initialisations de classe (descriptors protobuf, bootstrap Spring) sont
+  **one-shot** mais gonflent l'agrégat tant que la fenêtre englobe le démarrage. Resserrer la
+  Période pour lire le steady-state.
+- **CPU idle ≠ service lent** : `kube-train-api` brûle ~1,5 % CPU même sous charge → il est
+  **I/O-bound**. Profiler CPU montre alors surtout la tuyauterie : le vrai levier est côté I/O.
